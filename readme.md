@@ -10,8 +10,8 @@ The analyzer provides rich insights including:
 - Advanced language metrics
 
 Example visualizations:
-![Sentiment Distribution](sentiment_distribution.png)
-![Emotion Analysis](emotion_distribution.png)
+![Sentiment Distribution](https://drive.google.com/file/d/1Nu4kJ5pohm1QOghhwMhrjdKrGDVJhlTG/view?usp=sharing)
+![Emotion Analysis](https://drive.google.com/file/d/1GVJPZbYImknWgTCCfIvIpyEVC4XlMSSU/view?usp=sharing)
 
 ## 🛠️ Technical Details
 
