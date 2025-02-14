@@ -11,27 +11,30 @@ RUN apt-get update && apt-get install -y \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy requirements
+# Install Python packages
 COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Install dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
-
-# Download NLTK data and spaCy model
+# Download NLTK data
 RUN python -c "import nltk; nltk.download('punkt'); nltk.download('stopwords'); nltk.download('wordnet'); nltk.download('averaged_perceptron_tagger')"
-RUN python -m spacy download en_core_web_sm
+
+# Download spaCy model to a specific directory
+RUN mkdir -p /opt/spacy_models && \
+    python -m spacy download en_core_web_sm --path /opt/spacy_models
 
 # Final stage
 FROM python:3.12-slim
 
-# Copy virtual environment from builder
+# Copy virtual environment
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy NLTK and spaCy data
+# Copy NLTK data
 COPY --from=builder /root/nltk_data /root/nltk_data
-COPY --from=builder /root/.cache/spacy /root/.cache/spacy
+
+# Copy spaCy models
+COPY --from=builder /opt/spacy_models /opt/spacy_models
+ENV SPACY_MODEL_PATH=/opt/spacy_models/en_core_web_sm
 
 # Set working directory
 WORKDIR /usr/src/app

@@ -8,6 +8,8 @@ from src.topic_processor import TopicProcessor
 from src.sarcasm_detector import SarcasmDetector
 from src.language_analyzer import LanguageAnalyzer
 from src.prediction_analyzer import PredictionAnalyzer
+import os
+import spacy
 
 class SentimentAnalyzer:
     def __init__(self):
@@ -113,3 +115,7 @@ class SentimentAnalyzer:
         df['trend_direction'] = predictions['trend_direction']
         
         return df 
+
+def load_spacy_model():
+    model_path = os.getenv('SPACY_MODEL_PATH', 'en_core_web_sm')
+    return spacy.load(model_path) 
