@@ -1,0 +1,38 @@
+{
+    "title": "Reddit Sentiment Analysis",
+    "description": "Analyzes sentiment, emotions, and engagement patterns across multiple subreddits",
+    "type": "object",
+    "schemaVersion": 1,
+    "properties": {
+        "subreddits": {
+            "title": "Subreddits",
+            "type": "array",
+            "description": "List of subreddits to analyze",
+            "editor": "stringList",
+            "prefill": ["wallstreetbets", "stocks", "investing"]
+        },
+        "timeframe": {
+            "title": "Analysis Timeframe",
+            "type": "string",
+            "description": "Time period for data collection",
+            "enum": ["day", "week", "month"],
+            "default": "week"
+        },
+        "postLimit": {
+            "title": "Posts per Subreddit",
+            "type": "integer",
+            "description": "Maximum number of posts to analyze per subreddit",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 100
+        },
+        "outputFormat": {
+            "title": "Output Format",
+            "type": "string",
+            "description": "Format of the analysis output",
+            "enum": ["json", "csv"],
+            "default": "json"
+        }
+    },
+    "required": ["subreddits"]
+} 

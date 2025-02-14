@@ -1,0 +1,8 @@
+{
+    "name": "reddit-sentiment-analyzer",
+    "version": "1.0.0",
+    "buildTag": "latest",
+    "env": {
+        "APIFY_LOG_LEVEL": "DEBUG"
+    }
+} 

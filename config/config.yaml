@@ -1,0 +1,13 @@
+reddit:
+  client_id: "YOUR_CLIENT_ID"
+  client_secret: "YOUR_CLIENT_SECRET"
+  user_agent: "SentimentAnalysis/1.0"
+
+subreddits:
+  - "wallstreetbets"
+  - "stocks"
+  - "investing"
+
+data_collection:
+  post_limit: 100
+  time_filter: "day" 
