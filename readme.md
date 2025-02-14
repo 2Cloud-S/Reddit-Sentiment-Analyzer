@@ -10,8 +10,8 @@ The analyzer provides rich insights including:
 - Advanced language metrics
 
 Example visualizations:
-![Sentiment Distribution](docs/images/sentiment_distribution.png)
-![Emotion Analysis](docs/images/emotion_distribution.png)
+![Sentiment Distribution](sentiment_distribution.png)
+![Emotion Analysis](emotion_distribution.png)
 
 ## 🛠️ Technical Details
 
@@ -50,3 +50,34 @@ json
 "visualizations": ["path/to/viz1.png", ...],
 "analysis_summary": {...}
 }
+
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 👥 Authors
+
+- **2Cloud-S** - *Initial work* - [GitHub](https://github.com/2Cloud-S)
+
+## 🙏 Acknowledgments
+
+- Reddit API for data access
+- Apify for actor hosting
+- NLTK and spaCy for NLP capabilities
+- Hugging Face for transformer models
+
+## 📞 Contact
+
+- GitHub: [@2Cloud-S](https://github.com/2Cloud-S)
+- Project Link: [https://github.com/2Cloud-S/reddit-sentiment-analyzer](https://github.com/2Cloud-S/reddit-sentiment-analyzer)
