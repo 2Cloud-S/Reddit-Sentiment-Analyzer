@@ -15,10 +15,21 @@ def main():
     default_store = client.key_value_store('default')
     input_data = default_store.get_record('INPUT').value if default_store.get_record('INPUT') else {}
     
+    # Validate Reddit credentials
+    client_id = input_data.get('clientId')
+    client_secret = input_data.get('clientSecret')
+    user_agent = input_data.get('userAgent', 'SentimentAnalysis/1.0')
+    
+    if not client_id or not client_secret:
+        raise ValueError(
+            "Reddit API credentials are required. Please provide 'clientId' and 'clientSecret' "
+            "in the input. You can get these from https://www.reddit.com/prefs/apps"
+        )
+    
     # Set Reddit credentials in environment variables
-    os.environ['REDDIT_CLIENT_ID'] = input_data.get('clientId')
-    os.environ['REDDIT_CLIENT_SECRET'] = input_data.get('clientSecret')
-    os.environ['REDDIT_USER_AGENT'] = input_data.get('userAgent', 'SentimentAnalysis/1.0')
+    os.environ['REDDIT_CLIENT_ID'] = str(client_id)
+    os.environ['REDDIT_CLIENT_SECRET'] = str(client_secret)
+    os.environ['REDDIT_USER_AGENT'] = str(user_agent)
     
     # Update config with input parameters
     config = {
