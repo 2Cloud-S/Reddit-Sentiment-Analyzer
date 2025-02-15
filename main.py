@@ -86,48 +86,67 @@ def main():
     processor = MathProcessor()
     visualizer = Visualizer()
     
-    # Process data
-    print("Collecting Reddit data...")
-    df = collector.collect_data()
-    
-    print("Analyzing sentiment...")
-    df = analyzer.analyze_sentiment(df)
-    
-    print("Calculating metrics...")
-    metrics = processor.calculate_metrics(df)
-    
-    # Generate visualizations
-    print("Generating visualizations...")
-    visualization_paths = []
-    visualization_paths.append(visualizer.plot_sentiment_distribution(df))
-    visualization_paths.append(visualizer.plot_engagement_vs_sentiment(df))
-    visualization_paths.append(visualizer.plot_sentiment_time_series(df))
-    visualization_paths.append(visualizer.plot_advanced_metrics(df))
-    visualization_paths.append(visualizer.plot_emotion_distribution(df))
-    visualization_paths.append(visualizer.plot_prediction_analysis(df))
-    
-    # Prepare output
-    output = {
-        'metrics': metrics,
-        'visualizations': visualization_paths,
-        'analysis_summary': {
-            'total_posts_analyzed': len(df),
-            'timeframe': config['timeframe'],
-            'subreddits_analyzed': config['subreddits']
-        }
-    }
-    
-    # Save output to the default store
-    output_format = input_data.get('outputFormat', 'json')
-    if output_format == 'json':
-        default_store = client.key_value_store('default')
-        default_store.set_record('OUTPUT', output)
-    else:  # csv
-        df.to_csv('output.csv', index=False)
-        with open('output.csv', 'rb') as file:
-            default_store.set_record('OUTPUT.csv', file.read())
-    
-    print("Analysis complete! Check the output in Apify storage.")
+    try:
+        # Process data
+        print("Collecting Reddit data...")
+        df = collector.collect_data()
+        
+        if df.empty:
+            print("Warning: No data collected. Check your Reddit API credentials and subreddit names.")
+            # Create minimal output
+            output = {
+                'metrics': {},
+                'visualizations': [],
+                'analysis_summary': {
+                    'total_posts_analyzed': 0,
+                    'timeframe': config['timeframe'],
+                    'subreddits_analyzed': config['subreddits'],
+                    'error': 'No data collected. Possible authentication error.'
+                }
+            }
+        else:
+            print("Analyzing sentiment...")
+            df = analyzer.analyze_sentiment(df)
+            
+            print("Calculating metrics...")
+            metrics = processor.calculate_metrics(df)
+            
+            # Generate visualizations
+            print("Generating visualizations...")
+            visualization_paths = []
+            visualization_paths.append(visualizer.plot_sentiment_distribution(df))
+            visualization_paths.append(visualizer.plot_engagement_vs_sentiment(df))
+            visualization_paths.append(visualizer.plot_sentiment_time_series(df))
+            visualization_paths.append(visualizer.plot_advanced_metrics(df))
+            visualization_paths.append(visualizer.plot_emotion_distribution(df))
+            visualization_paths.append(visualizer.plot_prediction_analysis(df))
+            
+            # Prepare output
+            output = {
+                'metrics': metrics,
+                'visualizations': visualization_paths,
+                'analysis_summary': {
+                    'total_posts_analyzed': len(df),
+                    'timeframe': config['timeframe'],
+                    'subreddits_analyzed': config['subreddits']
+                }
+            }
+        
+        # Save output to the default store
+        output_format = input_data.get('outputFormat', 'json')
+        if output_format == 'json':
+            default_store = client.key_value_store('default')
+            default_store.set_record('OUTPUT', output)
+        else:  # csv
+            df.to_csv('output.csv', index=False)
+            with open('output.csv', 'rb') as file:
+                default_store.set_record('OUTPUT.csv', file.read())
+        
+        print("Analysis complete! Check the output in Apify storage.")
+
+    except Exception as e:
+        print(f"Error in main processing: {str(e)}")
+        raise
 
     # Add near the top of main()
     try:

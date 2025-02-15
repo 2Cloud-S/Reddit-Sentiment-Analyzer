@@ -1,8 +1,8 @@
-import praw
+from praw import Reddit
 import pandas as pd
 import yaml
-from datetime import datetime
 import os
+from datetime import datetime, timedelta
 
 class RedditDataCollector:
     def __init__(self, config):
@@ -16,11 +16,16 @@ class RedditDataCollector:
             raise TypeError("config must be either a dictionary or a path to a config file")
         
         # Initialize Reddit client
-        self.reddit = praw.Reddit(
-            client_id=os.environ.get('REDDIT_CLIENT_ID'),
-            client_secret=os.environ.get('REDDIT_CLIENT_SECRET'),
-            user_agent=os.environ.get('REDDIT_USER_AGENT', 'SentimentAnalysis/1.0')
-        )
+        try:
+            self.reddit = Reddit(
+                client_id=os.environ['REDDIT_CLIENT_ID'],
+                client_secret=os.environ['REDDIT_CLIENT_SECRET'],
+                user_agent=os.environ['REDDIT_USER_AGENT']
+            )
+            print("Debug - Reddit client initialized successfully")
+        except Exception as e:
+            print(f"Error initializing Reddit client: {str(e)}")
+            raise
         
         # Set default values if not provided
         self.subreddits = self.config.get('subreddits', ['wallstreetbets', 'stocks', 'investing'])
@@ -33,14 +38,27 @@ class RedditDataCollector:
         
         for subreddit_name in self.subreddits:
             try:
+                print(f"Collecting data from r/{subreddit_name}...")
                 subreddit = self.reddit.subreddit(subreddit_name)
-                posts = subreddit.top(time_filter=self.time_filter, limit=self.post_limit)
                 
+                # Test authentication
+                subreddit.display_name  # This will raise an error if authentication fails
+                
+                # Get posts based on timeframe
+                if self.time_filter == 'day':
+                    posts = subreddit.top('day', limit=self.post_limit)
+                elif self.time_filter == 'week':
+                    posts = subreddit.top('week', limit=self.post_limit)
+                elif self.time_filter == 'month':
+                    posts = subreddit.top('month', limit=self.post_limit)
+                else:
+                    posts = subreddit.top('year', limit=self.post_limit)
+
                 for post in posts:
                     post_data = {
                         'subreddit': subreddit_name,
                         'title': post.title,
-                        'text': post.selftext,
+                        'selftext': post.selftext,
                         'score': post.score,
                         'comments': post.num_comments,
                         'created_utc': datetime.fromtimestamp(post.created_utc),
@@ -53,4 +71,14 @@ class RedditDataCollector:
                 print(f"Error collecting data from r/{subreddit_name}: {str(e)}")
                 continue
         
-        return pd.DataFrame(all_posts) 
+        if not all_posts:
+            # Return empty DataFrame with expected columns
+            return pd.DataFrame(columns=[
+                'subreddit', 'title', 'selftext', 'score', 'comments',
+                'created_utc', 'id', 'url'
+            ])
+            
+        df = pd.DataFrame(all_posts)
+        print(f"Debug - Collected {len(df)} posts total")
+        print(f"Debug - DataFrame columns: {df.columns.tolist()}")
+        return df 
