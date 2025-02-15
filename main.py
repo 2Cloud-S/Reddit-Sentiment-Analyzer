@@ -11,28 +11,24 @@ def main():
     # Initialize the Apify client
     client = ApifyClient(os.environ['APIFY_TOKEN'])
     
-    # Get input from the default key-value store with enhanced debug logging
     try:
-        # Get the input directly from the actor
-        input_data = client.key_value_store().get_input() or {}
-        print("Debug - Direct input data:", {
-            k: (v if k != 'clientSecret' else '[HIDDEN]') 
-            for k, v in (input_data or {}).items()
-        })
+        # Get input using the correct method for Apify
+        default_store = client.key_value_store('default')
+        input_data = default_store.get_record('INPUT')
         
-        if not input_data:
-            print("Warning: No input data found through direct method. Trying alternative methods...")
-            # Try alternative method to get input
-            default_store = client.key_value_store('default')
-            input_record = default_store.get_record('INPUT')
-            input_data = input_record.value if input_record else {}
-            print("Debug - Alternative input data:", {
-                k: (v if k != 'clientSecret' else '[HIDDEN]') 
-                for k, v in (input_data or {}).items()
-            })
+        if input_data and hasattr(input_data, 'value'):
+            input_data = input_data.value
+        else:
+            # Try getting input directly from the actor
+            input_data = client.key_value_store().get_input()
         
         # Ensure input_data is a dictionary
         input_data = input_data or {}
+        
+        print("Debug - Input data received:", {
+            k: (v if k != 'clientSecret' else '[HIDDEN]') 
+            for k, v in input_data.items()
+        })
         
     except Exception as e:
         print(f"Error reading input: {str(e)}")
