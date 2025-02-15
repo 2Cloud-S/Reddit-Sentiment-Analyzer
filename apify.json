@@ -4,5 +4,6 @@
     "buildTag": "latest",
     "env": {
         "APIFY_LOG_LEVEL": "DEBUG"
-    }
+    },
+    "input": "./INPUT_SCHEMA.json"
 } 
