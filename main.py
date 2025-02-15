@@ -12,42 +12,38 @@ def main():
     client = ApifyClient(os.environ['APIFY_TOKEN'])
     
     # Get input from the default key-value store with enhanced debug logging
-    default_store = client.key_value_store('default')
-    print("Debug - Default store:", default_store)
-    
     try:
-        input_record = default_store.get_record('INPUT')
-        print("Debug - Raw input record:", input_record)
-        
-        if input_record is None:
-            print("Warning: Input record is None. Checking for direct environment variables...")
-            # Try to get credentials from environment variables as fallback
-            input_data = {
-                'clientId': os.environ.get('REDDIT_CLIENT_ID'),
-                'clientSecret': os.environ.get('REDDIT_CLIENT_SECRET'),
-                'userAgent': os.environ.get('REDDIT_USER_AGENT', 'SentimentAnalysis/1.0'),
-                'subreddits': os.environ.get('REDDIT_SUBREDDITS', '["wallstreetbets","stocks","investing"]'),
-                'timeframe': os.environ.get('REDDIT_TIMEFRAME', 'week'),
-                'postLimit': int(os.environ.get('REDDIT_POST_LIMIT', '100'))
-            }
-        else:
-            input_data = input_record.value if input_record else {}
-        
-        print("Debug - Parsed input data:", {
+        # Get the input directly from the actor
+        input_data = client.key_value_store().get_input() or {}
+        print("Debug - Direct input data:", {
             k: (v if k != 'clientSecret' else '[HIDDEN]') 
-            for k, v in input_data.items()
+            for k, v in (input_data or {}).items()
         })
+        
+        if not input_data:
+            print("Warning: No input data found through direct method. Trying alternative methods...")
+            # Try alternative method to get input
+            default_store = client.key_value_store('default')
+            input_record = default_store.get_record('INPUT')
+            input_data = input_record.value if input_record else {}
+            print("Debug - Alternative input data:", {
+                k: (v if k != 'clientSecret' else '[HIDDEN]') 
+                for k, v in (input_data or {}).items()
+            })
+        
+        # Ensure input_data is a dictionary
+        input_data = input_data or {}
         
     except Exception as e:
         print(f"Error reading input: {str(e)}")
-        raise
+        input_data = {}
     
     # Validate Reddit credentials with debug logging
     client_id = input_data.get('clientId')
     client_secret = input_data.get('clientSecret')
     user_agent = input_data.get('userAgent', 'SentimentAnalysis/1.0')
     
-    print("Debug - Credentials:")
+    print("Debug - Final credentials state:")
     print(f"- Client ID: {'Present' if client_id else 'Missing'}")
     print(f"- Client Secret: {'Present' if client_secret else 'Missing'}")
     print(f"- User Agent: {user_agent}")
@@ -110,6 +106,7 @@ def main():
     # Save output to the default store
     output_format = input_data.get('outputFormat', 'json')
     if output_format == 'json':
+        default_store = client.key_value_store('default')
         default_store.set_record('OUTPUT', output)
     else:  # csv
         df.to_csv('output.csv', index=False)
