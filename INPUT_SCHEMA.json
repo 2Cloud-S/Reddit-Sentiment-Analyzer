@@ -21,7 +21,8 @@
             "title": "User Agent",
             "type": "string",
             "description": "Unique identifier for your Reddit app",
-            "default": "SentimentAnalysis/1.0"
+            "default": "SentimentAnalysis/1.0",
+            "editor": "textfield"
         },
         "subreddits": {
             "title": "Subreddits",
@@ -35,7 +36,8 @@
             "type": "string",
             "description": "Time period for analysis",
             "enum": ["day", "week", "month", "year"],
-            "default": "week"
+            "default": "week",
+            "editor": "select"
         },
         "postLimit": {
             "title": "Post Limit",
@@ -43,7 +45,8 @@
             "description": "Maximum number of posts to analyze per subreddit",
             "minimum": 1,
             "maximum": 1000,
-            "default": 100
+            "default": 100,
+            "editor": "number"
         }
     },
     "required": ["clientId", "clientSecret", "subreddits", "timeframe", "postLimit"]
