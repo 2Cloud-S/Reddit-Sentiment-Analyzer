@@ -11,14 +11,23 @@ def main():
     # Initialize the Apify client
     client = ApifyClient(os.environ['APIFY_TOKEN'])
     
-    # Get input from the default key-value store
+    # Get input from the default key-value store with debug logging
     default_store = client.key_value_store('default')
-    input_data = default_store.get_record('INPUT').value if default_store.get_record('INPUT') else {}
+    input_record = default_store.get_record('INPUT')
+    print("Debug - Input record:", input_record)
     
-    # Validate Reddit credentials
+    input_data = input_record.value if input_record else {}
+    print("Debug - Input data:", input_data)
+    
+    # Validate Reddit credentials with debug logging
     client_id = input_data.get('clientId')
     client_secret = input_data.get('clientSecret')
     user_agent = input_data.get('userAgent', 'SentimentAnalysis/1.0')
+    
+    print("Debug - Credentials:")
+    print(f"- Client ID: {'Present' if client_id else 'Missing'}")
+    print(f"- Client Secret: {'Present' if client_secret else 'Missing'}")
+    print(f"- User Agent: {user_agent}")
     
     if not client_id or not client_secret:
         raise ValueError(
