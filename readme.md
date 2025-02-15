@@ -36,14 +36,12 @@ When running the actor, provide your Reddit API credentials in the input:
 
 json
 {
-"reddit_credentials": {
-"client_id": "your_client_id",
-"client_secret": "your_client_secret",
-"user_agent": "YourApp/1.0"
-},
+"clientId": "your_client_id",
+"clientSecret": "your_client_secret",
+"userAgent": "YourApp/1.0",
 "subreddits": ["wallstreetbets", "stocks"],
 "timeframe": "week",
-"post_limit": 100
+"postLimit": 100
 }
 
 Your credentials are securely stored and handled by Apify.
