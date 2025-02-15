@@ -129,5 +129,13 @@ def main():
     
     print("Analysis complete! Check the output in Apify storage.")
 
+    # Add near the top of main()
+    try:
+        import nltk
+        print("Debug - NLTK data path:", nltk.data.path)
+        print("Debug - Available NLTK data:", nltk.data.find('sentiment/vader_lexicon'))
+    except Exception as e:
+        print("Debug - NLTK data check failed:", str(e))
+
 if __name__ == "__main__":
     main() 
