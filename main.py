@@ -12,20 +12,30 @@ def main():
     client = ApifyClient(os.environ['APIFY_TOKEN'])
     
     try:
-        # Get input using the correct method for Apify
-        default_store = client.key_value_store('default')
-        input_data = default_store.get_record('INPUT')
+        # Get input using the correct method from Apify SDK
+        default_kvs_id = os.environ.get('APIFY_DEFAULT_KEY_VALUE_STORE_ID')
+        print(f"Debug - Default KVS ID: {default_kvs_id}")
         
-        if input_data and hasattr(input_data, 'value'):
-            input_data = input_data.value
-        else:
-            # Try getting input directly from the actor
-            input_data = client.key_value_store().get_input()
+        if not default_kvs_id:
+            raise ValueError("APIFY_DEFAULT_KEY_VALUE_STORE_ID environment variable is not set")
+            
+        default_store = client.key_value_store(default_kvs_id)
+        print("Debug - Default store initialized")
+        
+        # Get the input
+        input_data = None
+        try:
+            input_record = default_store.get_record('INPUT')
+            print(f"Debug - Raw input record: {input_record}")
+            if input_record and hasattr(input_record, 'value'):
+                input_data = input_record.value
+        except Exception as e:
+            print(f"Warning - Error getting input record: {str(e)}")
         
         # Ensure input_data is a dictionary
         input_data = input_data or {}
         
-        print("Debug - Input data received:", {
+        print("Debug - Parsed input data:", {
             k: (v if k != 'clientSecret' else '[HIDDEN]') 
             for k, v in input_data.items()
         })

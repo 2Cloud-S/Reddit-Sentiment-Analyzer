@@ -5,57 +5,5 @@
     "env": {
         "APIFY_LOG_LEVEL": "DEBUG"
     },
-    "input": {
-        "title": "Reddit Sentiment Analyzer Input",
-        "description": "Configure the parameters for Reddit sentiment analysis",
-        "type": "object",
-        "schemaVersion": 1,
-        "properties": {
-            "clientId": {
-                "title": "Reddit Client ID",
-                "type": "string",
-                "description": "Your Reddit API Client ID",
-                "editor": "textfield"
-            },
-            "clientSecret": {
-                "title": "Reddit Client Secret",
-                "type": "string",
-                "description": "Your Reddit API Client Secret",
-                "editor": "textfield",
-                "isSecret": true
-            },
-            "userAgent": {
-                "title": "User Agent",
-                "type": "string",
-                "description": "Unique identifier for your Reddit app",
-                "default": "SentimentAnalysis/1.0",
-                "editor": "textfield"
-            },
-            "subreddits": {
-                "title": "Subreddits",
-                "type": "array",
-                "description": "List of subreddits to analyze",
-                "prefill": ["wallstreetbets", "stocks", "investing"],
-                "editor": "stringList"
-            },
-            "timeframe": {
-                "title": "Time Frame",
-                "type": "string",
-                "description": "Time period for analysis",
-                "enum": ["day", "week", "month", "year"],
-                "default": "week",
-                "editor": "select"
-            },
-            "postLimit": {
-                "title": "Post Limit",
-                "type": "integer",
-                "description": "Maximum number of posts to analyze per subreddit",
-                "minimum": 1,
-                "maximum": 1000,
-                "default": 100,
-                "editor": "number"
-            }
-        },
-        "required": ["clientId", "clientSecret"]
-    }
+    "input": "./INPUT_SCHEMA.json"
 } 

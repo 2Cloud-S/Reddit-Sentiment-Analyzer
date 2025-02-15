@@ -40,9 +40,12 @@ ENV SPACY_MODEL_PATH=/opt/spacy_models/en_core_web_sm
 # Set working directory
 WORKDIR /usr/src/app
 
-# Copy source code and input schema
+# Copy source code and configuration files
 COPY . .
-COPY INPUT_SCHEMA.json /usr/src/app/INPUT_SCHEMA.json
+
+# Ensure INPUT_SCHEMA.json is in the correct location
+RUN test -f INPUT_SCHEMA.json || (echo "INPUT_SCHEMA.json is missing" && exit 1)
+RUN test -f apify.json || (echo "apify.json is missing" && exit 1)
 
 # Run the actor
 CMD ["python", "main.py"] 
