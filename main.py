@@ -11,8 +11,11 @@ def main():
     # Initialize the Apify client
     client = ApifyClient(os.environ['APIFY_TOKEN'])
     
-    # Get input
-    input_data = client.key_value_store().getInput() or {}
+    # Get input from the default key-value store
+    default_store = client.key_value_store('default')
+    input_data = default_store.get_record('INPUT').value if default_store.get_record('INPUT') else {}
+    
+    # Get configuration values
     subreddits = input_data.get('subreddits', ['wallstreetbets', 'stocks', 'investing'])
     timeframe = input_data.get('timeframe', 'week')
     post_limit = input_data.get('postLimit', 100)
@@ -62,13 +65,13 @@ def main():
         }
     }
     
-    # Save output
+    # Save output to the default store
     if output_format == 'json':
-        client.key_value_store().setValue('OUTPUT', output)
+        default_store.set_record('OUTPUT', output)
     else:  # csv
         df.to_csv('output.csv', index=False)
         with open('output.csv', 'rb') as file:
-            client.key_value_store().setValue('OUTPUT.csv', file)
+            default_store.set_record('OUTPUT.csv', file.read())
     
     print("Analysis complete! Check the output in Apify storage.")
 
