@@ -27,8 +27,16 @@ def main():
         try:
             input_record = default_store.get_record('INPUT')
             print(f"Debug - Raw input record: {input_record}")
-            if input_record and hasattr(input_record, 'value'):
-                input_data = input_record.value
+            
+            # Extract the value from the input record
+            if input_record and isinstance(input_record, dict):
+                if 'value' in input_record:
+                    input_data = input_record['value']
+                else:
+                    print("Warning: Input record does not contain 'value' field")
+            else:
+                print(f"Warning: Unexpected input record format: {type(input_record)}")
+            
         except Exception as e:
             print(f"Warning - Error getting input record: {str(e)}")
         
