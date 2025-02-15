@@ -10,9 +10,43 @@ The analyzer provides rich insights including:
 - Advanced language metrics
 
 Example visualizations:
-![Sentiment Distribution]![sentiment_distribution](https://github.com/user-attachments/assets/e5665d51-207b-477a-aba5-438993fa0605)
-![Emotion Analysis]![emotion_distribution](https://github.com/user-attachments/assets/94b99eeb-c6b7-46a2-8a87-854b71c6e878)
+![Sentiment Distribution](sentiment_distribution.png)
+![Emotion Analysis](emotion_distribution.png)
 
+## 🔑 API Credentials Setup
+
+### Getting Reddit API Credentials
+
+1. Go to [Reddit's App Preferences](https://www.reddit.com/prefs/apps)
+2. Click "Create App" or "Create Another App"
+3. Fill in the details:
+   - Name: Your app name
+   - Type: Select "script"
+   - Description: Brief description
+   - About URL: Your GitHub repo or website
+   - Redirect URI: http://localhost:8080
+4. Click "Create app"
+5. Note down your:
+   - Client ID (under your app name)
+   - Client Secret (labeled as "secret")
+
+### Using Credentials in Apify
+
+When running the actor, provide your Reddit API credentials in the input:
+
+json
+{
+"reddit_credentials": {
+"client_id": "your_client_id",
+"client_secret": "your_client_secret",
+"user_agent": "YourApp/1.0"
+},
+"subreddits": ["wallstreetbets", "stocks"],
+"timeframe": "week",
+"post_limit": 100
+}
+
+Your credentials are securely stored and handled by Apify.
 
 ## 🛠️ Technical Details
 

@@ -4,6 +4,33 @@
     "type": "object",
     "schemaVersion": 1,
     "properties": {
+        "reddit_credentials": {
+            "title": "Reddit API Credentials",
+            "type": "object",
+            "description": "Your Reddit API credentials (required for data collection)",
+            "editor": "json",
+            "properties": {
+                "client_id": {
+                    "title": "Client ID",
+                    "type": "string",
+                    "description": "Reddit API Client ID from your Reddit App"
+                },
+                "client_secret": {
+                    "title": "Client Secret",
+                    "type": "string",
+                    "description": "Reddit API Client Secret from your Reddit App",
+                    "editor": "textfield",
+                    "isSecret": true
+                },
+                "user_agent": {
+                    "title": "User Agent",
+                    "type": "string",
+                    "description": "Unique identifier for your app",
+                    "default": "SentimentAnalysis/1.0"
+                }
+            },
+            "required": ["client_id", "client_secret"]
+        },
         "subreddits": {
             "title": "Subreddits",
             "type": "array",
@@ -27,5 +54,5 @@
             "default": 100
         }
     },
-    "required": ["subreddits", "timeframe", "post_limit"]
+    "required": ["reddit_credentials", "subreddits", "timeframe", "post_limit"]
 } 
