@@ -11,13 +11,36 @@ def main():
     # Initialize the Apify client
     client = ApifyClient(os.environ['APIFY_TOKEN'])
     
-    # Get input from the default key-value store with debug logging
+    # Get input from the default key-value store with enhanced debug logging
     default_store = client.key_value_store('default')
-    input_record = default_store.get_record('INPUT')
-    print("Debug - Input record:", input_record)
+    print("Debug - Default store:", default_store)
     
-    input_data = input_record.value if input_record else {}
-    print("Debug - Input data:", input_data)
+    try:
+        input_record = default_store.get_record('INPUT')
+        print("Debug - Raw input record:", input_record)
+        
+        if input_record is None:
+            print("Warning: Input record is None. Checking for direct environment variables...")
+            # Try to get credentials from environment variables as fallback
+            input_data = {
+                'clientId': os.environ.get('REDDIT_CLIENT_ID'),
+                'clientSecret': os.environ.get('REDDIT_CLIENT_SECRET'),
+                'userAgent': os.environ.get('REDDIT_USER_AGENT', 'SentimentAnalysis/1.0'),
+                'subreddits': os.environ.get('REDDIT_SUBREDDITS', '["wallstreetbets","stocks","investing"]'),
+                'timeframe': os.environ.get('REDDIT_TIMEFRAME', 'week'),
+                'postLimit': int(os.environ.get('REDDIT_POST_LIMIT', '100'))
+            }
+        else:
+            input_data = input_record.value if input_record else {}
+        
+        print("Debug - Parsed input data:", {
+            k: (v if k != 'clientSecret' else '[HIDDEN]') 
+            for k, v in input_data.items()
+        })
+        
+    except Exception as e:
+        print(f"Error reading input: {str(e)}")
+        raise
     
     # Validate Reddit credentials with debug logging
     client_id = input_data.get('clientId')
