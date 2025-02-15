@@ -15,17 +15,16 @@ def main():
     default_store = client.key_value_store('default')
     input_data = default_store.get_record('INPUT').value if default_store.get_record('INPUT') else {}
     
-    # Get configuration values
-    subreddits = input_data.get('subreddits', ['wallstreetbets', 'stocks', 'investing'])
-    timeframe = input_data.get('timeframe', 'week')
-    post_limit = input_data.get('postLimit', 100)
-    output_format = input_data.get('outputFormat', 'json')
+    # Set Reddit credentials in environment variables
+    os.environ['REDDIT_CLIENT_ID'] = input_data.get('clientId')
+    os.environ['REDDIT_CLIENT_SECRET'] = input_data.get('clientSecret')
+    os.environ['REDDIT_USER_AGENT'] = input_data.get('userAgent', 'SentimentAnalysis/1.0')
     
     # Update config with input parameters
     config = {
-        'subreddits': subreddits,
-        'timeframe': timeframe,
-        'post_limit': post_limit
+        'subreddits': input_data.get('subreddits', ['wallstreetbets', 'stocks', 'investing']),
+        'timeframe': input_data.get('timeframe', 'week'),
+        'post_limit': input_data.get('postLimit', 100)
     }
     
     # Initialize components
@@ -60,12 +59,13 @@ def main():
         'visualizations': visualization_paths,
         'analysis_summary': {
             'total_posts_analyzed': len(df),
-            'timeframe': timeframe,
-            'subreddits_analyzed': subreddits
+            'timeframe': config['timeframe'],
+            'subreddits_analyzed': config['subreddits']
         }
     }
     
     # Save output to the default store
+    output_format = input_data.get('outputFormat', 'json')
     if output_format == 'json':
         default_store.set_record('OUTPUT', output)
     else:  # csv

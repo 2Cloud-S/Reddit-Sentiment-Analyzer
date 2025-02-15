@@ -2,34 +2,41 @@ import praw
 import pandas as pd
 import yaml
 from datetime import datetime
-from tqdm import tqdm
-import time
+import os
 
 class RedditDataCollector:
-    def __init__(self, config_path):
-        with open(config_path, 'r') as file:
-            config = yaml.safe_load(file)
+    def __init__(self, config):
+        """Initialize with either a config file path or config dictionary"""
+        if isinstance(config, dict):
+            self.config = config
+        elif isinstance(config, (str, bytes, os.PathLike)):
+            with open(config, 'r') as file:
+                self.config = yaml.safe_load(file)
+        else:
+            raise TypeError("config must be either a dictionary or a path to a config file")
         
+        # Initialize Reddit client
         self.reddit = praw.Reddit(
-            client_id=config['reddit']['client_id'],
-            client_secret=config['reddit']['client_secret'],
-            user_agent=config['reddit']['user_agent']
+            client_id=os.environ.get('REDDIT_CLIENT_ID'),
+            client_secret=os.environ.get('REDDIT_CLIENT_SECRET'),
+            user_agent=os.environ.get('REDDIT_USER_AGENT', 'SentimentAnalysis/1.0')
         )
-        self.subreddits = config['subreddits']
-        self.post_limit = config['data_collection']['post_limit']
-        self.time_filter = config['data_collection']['time_filter']
+        
+        # Set default values if not provided
+        self.subreddits = self.config.get('subreddits', ['wallstreetbets', 'stocks', 'investing'])
+        self.time_filter = self.config.get('timeframe', 'week')
+        self.post_limit = self.config.get('post_limit', 100)
 
     def collect_data(self):
-        data = []
+        """Collect data from specified subreddits"""
+        all_posts = []
         
-        for subreddit_name in tqdm(self.subreddits, desc="Collecting subreddit data"):
-            subreddit = self.reddit.subreddit(subreddit_name)
-            
+        for subreddit_name in self.subreddits:
             try:
-                for post in tqdm(subreddit.top(time_filter=self.time_filter, limit=self.post_limit),
-                               desc=f"Processing r/{subreddit_name}",
-                               leave=False):
-                    # Extract more data points
+                subreddit = self.reddit.subreddit(subreddit_name)
+                posts = subreddit.top(time_filter=self.time_filter, limit=self.post_limit)
+                
+                for post in posts:
                     post_data = {
                         'subreddit': subreddit_name,
                         'title': post.title,
@@ -37,36 +44,13 @@ class RedditDataCollector:
                         'score': post.score,
                         'comments': post.num_comments,
                         'created_utc': datetime.fromtimestamp(post.created_utc),
-                        'upvote_ratio': post.upvote_ratio,
-                        'is_original_content': post.is_original_content,
-                        'over_18': post.over_18,
-                        'spoiler': post.spoiler,
-                        'stickied': post.stickied,
-                        'url': post.url,
-                        'author': str(post.author) if post.author else '[deleted]'
+                        'id': post.id,
+                        'url': post.url
                     }
-                    
-                    # Add top-level comments data
-                    post.comments.replace_more(limit=0)  # Remove MoreComments objects
-                    comments_text = []
-                    for comment in post.comments[:10]:  # Get top 10 comments
-                        if comment.body:
-                            comments_text.append(comment.body)
-                    
-                    post_data['top_comments'] = ' '.join(comments_text)
-                    data.append(post_data)
-                    
-                    # Respect Reddit's API rate limits
-                    time.sleep(0.5)
+                    all_posts.append(post_data)
                     
             except Exception as e:
                 print(f"Error collecting data from r/{subreddit_name}: {str(e)}")
                 continue
         
-        df = pd.DataFrame(data)
-        
-        # Add timestamp features
-        df['hour'] = df['created_utc'].dt.hour
-        df['day_of_week'] = df['created_utc'].dt.day_name()
-        
-        return df 
+        return pd.DataFrame(all_posts) 
