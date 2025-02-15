@@ -18,7 +18,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Download NLTK data
 RUN python -c "import nltk; nltk.download('punkt'); nltk.download('stopwords'); nltk.download('wordnet'); nltk.download('averaged_perceptron_tagger')"
 
-# Download spaCy model and create symbolic link
+# Download spaCy model
 RUN python -m spacy download en_core_web_sm && \
     mkdir -p /opt/spacy_models && \
     ln -s /opt/venv/lib/python3.12/site-packages/en_core_web_sm /opt/spacy_models/en_core_web_sm
@@ -40,43 +40,9 @@ ENV SPACY_MODEL_PATH=/opt/spacy_models/en_core_web_sm
 # Set working directory
 WORKDIR /usr/src/app
 
-# Copy source code
+# Copy source code and input schema
 COPY . .
-
-# Create input schema
-COPY <<EOF /usr/src/app/INPUT_SCHEMA.json
-{
-    "title": "Reddit Sentiment Analyzer Input",
-    "description": "Configure the parameters for Reddit sentiment analysis",
-    "type": "object",
-    "schemaVersion": 1,
-    "properties": {
-        "subreddits": {
-            "title": "Subreddits",
-            "type": "array",
-            "description": "List of subreddits to analyze",
-            "prefill": ["wallstreetbets", "stocks", "investing"],
-            "editor": "stringList"
-        },
-        "timeframe": {
-            "title": "Time Frame",
-            "type": "string",
-            "description": "Time period for analysis",
-            "enum": ["day", "week", "month", "year"],
-            "default": "week"
-        },
-        "post_limit": {
-            "title": "Post Limit",
-            "type": "integer",
-            "description": "Maximum number of posts to analyze per subreddit",
-            "minimum": 1,
-            "maximum": 1000,
-            "default": 100
-        }
-    },
-    "required": ["subreddits", "timeframe", "post_limit"]
-}
-EOF
+COPY INPUT_SCHEMA.json /usr/src/app/INPUT_SCHEMA.json
 
 # Run the actor
 CMD ["python", "main.py"] 
