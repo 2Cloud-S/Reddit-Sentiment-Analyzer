@@ -54,6 +54,10 @@ class RedditDataCollector:
             test_subreddit.display_name
             print("✓ Credentials verified successfully")
             
+            # Add authentication test
+            if not self.test_authentication():
+                raise ValueError("Reddit API authentication failed")
+            
         except Exception as e:
             print("\n❌ Reddit API Authentication Error:")
             if '401' in str(e):
@@ -143,3 +147,27 @@ class RedditDataCollector:
         print(f"- Shape: {df.shape}")
         print(f"- Columns: {df.columns.tolist()}")
         return df
+
+    def test_authentication(self):
+        """Test Reddit API authentication"""
+        try:
+            print("\nTesting Reddit API authentication...")
+            # Try to access user identity
+            user = self.reddit.user.me()
+            if user is None:
+                print("⚠️ Warning: Authenticated but couldn't get user details")
+                return True
+            print(f"✓ Successfully authenticated as: {user.name}")
+            return True
+        except Exception as e:
+            print("\n❌ Authentication test failed:")
+            print(f"- Error type: {type(e).__name__}")
+            print(f"- Error message: {str(e)}")
+            if '401' in str(e):
+                print("- Issue: Invalid credentials or incorrect format")
+                print("- Solution: Verify your client_id and client_secret")
+                print("- Note: Make sure you're using a 'script' type app")
+            elif '403' in str(e):
+                print("- Issue: Insufficient permissions")
+                print("- Solution: Check app permissions and user agent format")
+            return False

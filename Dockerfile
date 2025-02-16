@@ -15,13 +15,11 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Download NLTK data with vader_lexicon
-RUN python -c "import nltk; nltk.download(['punkt', 'stopwords', 'wordnet', 'averaged_perceptron_tagger', 'vader_lexicon'])"
+# Download NLTK data with explicit vader_lexicon download
+RUN python -c "import nltk; nltk.download(['punkt', 'stopwords', 'wordnet', 'averaged_perceptron_tagger']); nltk.download('vader_lexicon', download_dir='/usr/local/share/nltk_data')"
 
 # Download spaCy model
-RUN python -m spacy download en_core_web_sm && \
-    mkdir -p /opt/spacy_models && \
-    ln -s /opt/venv/lib/python3.12/site-packages/en_core_web_sm /opt/spacy_models/en_core_web_sm
+RUN python -m spacy download en_core_web_sm
 
 # Final stage
 FROM python:3.12-slim
@@ -30,12 +28,9 @@ FROM python:3.12-slim
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy NLTK data
-COPY --from=builder /root/nltk_data /root/nltk_data
-
-# Copy spaCy models
-COPY --from=builder /opt/spacy_models /opt/spacy_models
-ENV SPACY_MODEL_PATH=/opt/spacy_models/en_core_web_sm
+# Copy NLTK data with specific paths
+COPY --from=builder /usr/local/share/nltk_data /usr/local/share/nltk_data
+ENV NLTK_DATA=/usr/local/share/nltk_data
 
 # Set working directory
 WORKDIR /usr/src/app
