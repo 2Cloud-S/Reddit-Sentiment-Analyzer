@@ -26,8 +26,9 @@
         "userAgent": {
             "title": "User Agent",
             "type": "string",
-            "description": "Custom user agent string",
-            "default": "script:SentimentAnalysis:v1.0 (by /u/USERNAME)"
+            "description": "Custom user agent string for Reddit API (e.g., 'script:MyApp:v1.0 (by /u/username)')",
+            "default": "script:RedditSentimentAnalyzer:v1.0",
+            "editor": "textfield"
         },
         "appName": {
             "title": "Application Name",
@@ -79,6 +80,13 @@
             "enum": ["json", "csv", "both"],
             "default": "json",
             "editor": "select"
+        },
+        "includeComments": {
+            "title": "Include Comments",
+            "type": "boolean",
+            "description": "Whether to analyze post comments",
+            "default": true,
+            "editor": "checkbox"
         }
     },
     "required": ["clientId", "clientSecret", "redditUsername"]
