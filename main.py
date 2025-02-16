@@ -36,6 +36,8 @@ def main():
         # Get input from Apify
         default_store = client.key_value_store(os.environ['APIFY_DEFAULT_KEY_VALUE_STORE_ID'])
         input_record = default_store.get_record('INPUT')
+        
+        # Log input record (hiding sensitive data)
         print("Debug - Raw input record:", {
             **input_record.get('value', {}),
             'clientSecret': '[HIDDEN]' if 'clientSecret' in input_record.get('value', {}) else None
@@ -43,24 +45,21 @@ def main():
         
         input_data = input_record.get('value', {}) if input_record else {}
         
-        # Construct user agent from components
-        reddit_username = input_data.get('redditUsername')
-        app_name = input_data.get('appName', 'RedditSentimentAnalyzer')
-        app_version = input_data.get('appVersion', 'v1.0')
+        # Validate required inputs
+        required_fields = ['clientId', 'clientSecret', 'redditUsername']
+        missing_fields = [field for field in required_fields if not input_data.get(field)]
+        if missing_fields:
+            raise ValueError(f"Missing required fields: {', '.join(missing_fields)}")
         
-        if not reddit_username:
-            raise ValueError("Reddit username is required in the input")
-        
-        user_agent = f"script:{app_name}:{app_version} (by /u/{reddit_username})"
+        # Construct user agent once
+        user_agent = f"script:{input_data.get('appName', 'RedditSentimentAnalyzer')}:v{input_data.get('appVersion', '1.0')} (by /u/{input_data['redditUsername']})"
         print(f"Constructed user agent: {user_agent}")
         
-        # Set Reddit credentials once
-        os.environ['REDDIT_CLIENT_ID'] = str(input_data.get('clientId'))
-        os.environ['REDDIT_CLIENT_SECRET'] = str(input_data.get('clientSecret'))
-        os.environ['REDDIT_USER_AGENT'] = user_agent
-        
-        # Update config with input parameters
+        # Set Reddit credentials
         config = {
+            'client_id': input_data['clientId'],
+            'client_secret': input_data['clientSecret'],
+            'user_agent': user_agent,
             'subreddits': input_data.get('subreddits', ['wallstreetbets', 'stocks', 'investing']),
             'timeframe': input_data.get('timeframe', 'week'),
             'post_limit': input_data.get('postLimit', 100)

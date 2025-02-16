@@ -8,14 +8,16 @@
             "title": "Reddit Client ID",
             "type": "string",
             "description": "Your Reddit API Client ID from https://www.reddit.com/prefs/apps",
-            "editor": "textfield"
+            "editor": "textfield",
+            "minLength": 1
         },
         "clientSecret": {
             "title": "Reddit Client Secret",
             "type": "string",
             "description": "Your Reddit API Client Secret",
             "editor": "textfield",
-            "isSecret": true
+            "isSecret": true,
+            "minLength": 1
         },
         "redditUsername": {
             "title": "Reddit Username",

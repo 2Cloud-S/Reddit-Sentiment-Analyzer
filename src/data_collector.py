@@ -7,53 +7,46 @@ import re
 
 class RedditDataCollector:
     def __init__(self, config):
-        """Initialize with either a config file path or config dictionary"""
+        """Initialize with configuration dictionary"""
         print("Initializing RedditDataCollector...")
         
-        if isinstance(config, dict):
-            self.config = config
-            print("Using provided config dictionary")
-        elif isinstance(config, (str, bytes, os.PathLike)):
-            print(f"Loading config from file: {config}")
-            with open(config, 'r') as file:
-                self.config = yaml.safe_load(file)
-        else:
-            raise TypeError("config must be either a dictionary or a path to a config file")
+        required_fields = ['client_id', 'client_secret', 'user_agent']
+        if not all(field in config for field in required_fields):
+            raise ValueError(f"Missing required fields in config: {required_fields}")
         
-        # Get credentials from environment
-        self.client_id = os.environ.get('REDDIT_CLIENT_ID')
-        self.client_secret = os.environ.get('REDDIT_CLIENT_SECRET')
-        self.user_agent = os.environ.get('REDDIT_USER_AGENT')
-        
-        # Validate credentials
-        if not all([self.client_id, self.client_secret, self.user_agent]):
-            raise ValueError("Missing Reddit API credentials in environment variables")
+        self.config = config
         
         # Validate user agent format
-        if not re.match(r'^script:[a-zA-Z0-9_-]+:v\d+\.\d+\s+\(by\s+/u/[a-zA-Z0-9_-]+\)$', self.user_agent):
+        user_agent_pattern = r'^script:[a-zA-Z0-9_-]+:v\d+\.\d+\s+\(by\s+/u/[a-zA-Z0-9_-]+\)$'
+        if not re.match(user_agent_pattern, config['user_agent']):
             raise ValueError(
-                f"Invalid user agent format: {self.user_agent}\n"
+                f"Invalid user agent format: {config['user_agent']}\n"
                 "Must be: 'script:<app ID>:v<version> (by /u/<reddit username>)'\n"
                 "Example: 'script:RedditSentimentAnalyzer:v1.0 (by /u/your_username)'"
             )
         
-        print("\nReddit API Configuration:")
-        print(f"✓ User Agent: {self.user_agent}")
-        print(f"✓ Client ID: {'*' * len(self.client_id)}")
-        print(f"✓ Client Secret: {'*' * 8}")
-        
         # Initialize Reddit client
         try:
             self.reddit = Reddit(
-                client_id=self.client_id,
-                client_secret=self.client_secret,
-                user_agent=self.user_agent
+                client_id=config['client_id'],
+                client_secret=config['client_secret'],
+                user_agent=config['user_agent']
             )
-            # Verify credentials
-            self.reddit.user.me()
-            print("✓ Reddit API authentication successful")
+            
+            # Verify credentials with proper error handling
+            try:
+                self.reddit.user.me()
+                print("✓ Reddit API authentication successful")
+            except Exception as e:
+                raise ValueError(f"Reddit API authentication failed: {str(e)}")
+            
+            print("\nReddit API Configuration:")
+            print(f"✓ User Agent: {config['user_agent']}")
+            print(f"✓ Client ID: {'*' * len(config['client_id'])}")
+            print(f"✓ Client Secret: {'*' * 8}")
+            
         except Exception as e:
-            raise ValueError(f"Reddit API authentication failed: {str(e)}")
+            raise ValueError(f"Failed to initialize Reddit client: {str(e)}")
         
         # Extract configuration
         self.subreddits = self.config.get('subreddits', [])
