@@ -10,20 +10,32 @@ class RedditDataCollector:
         """Initialize with configuration dictionary"""
         print("Initializing RedditDataCollector...")
         
+        # Validate required fields
         required_fields = ['client_id', 'client_secret', 'user_agent']
-        if not all(field in config for field in required_fields):
-            raise ValueError(f"Missing required fields in config: {required_fields}")
+        missing_fields = [field for field in required_fields if not config.get(field)]
+        if missing_fields:
+            raise ValueError(f"Missing required fields in config: {missing_fields}")
         
         self.config = config
         
         # Validate user agent format
         user_agent_pattern = r'^script:[a-zA-Z0-9_-]+:v\d+\.\d+\s+\(by\s+/u/[a-zA-Z0-9_-]+\)$'
         if not re.match(user_agent_pattern, config['user_agent']):
-            raise ValueError(
-                f"Invalid user agent format: {config['user_agent']}\n"
-                "Must be: 'script:<app ID>:v<version> (by /u/<reddit username>)'\n"
-                "Example: 'script:RedditSentimentAnalyzer:v1.0 (by /u/your_username)'"
-            )
+            print(f"⚠️ Invalid user agent format: {config['user_agent']}")
+            print("Attempting to fix user agent format...")
+            try:
+                parts = config['user_agent'].split(':')
+                username = re.search(r'/u/([a-zA-Z0-9_-]+)', parts[-1]).group(1)
+                app_name = parts[1].strip()
+                version = parts[2].split()[0].strip('v')
+                config['user_agent'] = f"script:{app_name}:v{version} (by /u/{username})"
+                print(f"✓ Fixed user agent: {config['user_agent']}")
+            except Exception as e:
+                raise ValueError(
+                    f"Could not fix user agent format. Please use format: "
+                    "'script:<app ID>:v<version> (by /u/<reddit username>)'\n"
+                    f"Error: {str(e)}"
+                )
         
         # Initialize Reddit client
         try:

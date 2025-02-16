@@ -37,7 +37,6 @@ def main():
         default_store = client.key_value_store(os.environ['APIFY_DEFAULT_KEY_VALUE_STORE_ID'])
         input_record = default_store.get_record('INPUT')
         
-        # Log input record (hiding sensitive data)
         print("Debug - Raw input record:", {
             **input_record.get('value', {}),
             'clientSecret': '[HIDDEN]' if 'clientSecret' in input_record.get('value', {}) else None
@@ -45,25 +44,26 @@ def main():
         
         input_data = input_record.get('value', {}) if input_record else {}
         
-        # Validate required inputs
-        required_fields = ['clientId', 'clientSecret', 'redditUsername']
-        missing_fields = [field for field in required_fields if not input_data.get(field)]
-        if missing_fields:
-            raise ValueError(f"Missing required fields: {', '.join(missing_fields)}")
-        
-        # Construct user agent once
-        user_agent = f"script:{input_data.get('appName', 'RedditSentimentAnalyzer')}:v{input_data.get('appVersion', '1.0')} (by /u/{input_data['redditUsername']})"
+        # Construct user agent with proper format
+        user_agent = f"script:{input_data.get('appName', 'RedditSentimentAnalyzer')}:{input_data.get('appVersion', 'v1.0')} (by /u/{input_data.get('redditUsername', '')})"
         print(f"Constructed user agent: {user_agent}")
         
-        # Set Reddit credentials
+        # Create config dictionary with all required fields
         config = {
-            'client_id': input_data['clientId'],
-            'client_secret': input_data['clientSecret'],
+            'client_id': input_data.get('clientId'),
+            'client_secret': input_data.get('clientSecret'),
             'user_agent': user_agent,
             'subreddits': input_data.get('subreddits', ['wallstreetbets', 'stocks', 'investing']),
             'timeframe': input_data.get('timeframe', 'week'),
             'post_limit': input_data.get('postLimit', 100)
         }
+        
+        # Validate credentials before proceeding
+        if not config['client_id'] or not config['client_secret']:
+            raise ValueError(
+                "Reddit API credentials are required. Please provide 'clientId' and 'clientSecret' "
+                "in the input. You can get these from https://www.reddit.com/prefs/apps"
+            )
         
         # Remove duplicate credential validation
         if not verify_nltk_setup():
