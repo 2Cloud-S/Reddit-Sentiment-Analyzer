@@ -6,6 +6,7 @@ from src.sentiment_analyzer import SentimentAnalyzer
 from src.math_processor import MathProcessor
 from src.visualizer import Visualizer
 from src.topic_processor import TopicProcessor
+from datetime import datetime
 
 def main():
     # Initialize the Apify client
@@ -133,14 +134,41 @@ def main():
             }
         
         # Save output to the default store
-        output_format = input_data.get('outputFormat', 'json')
-        if output_format == 'json':
-            default_store = client.key_value_store('default')
-            default_store.set_record('OUTPUT', output)
-        else:  # csv
-            df.to_csv('output.csv', index=False)
-            with open('output.csv', 'rb') as file:
-                default_store.set_record('OUTPUT.csv', file.read())
+        print("Saving output to key-value store...")
+        try:
+            default_store.set_record(
+                'OUTPUT',
+                output,
+                content_type='application/json'
+            )
+            print("Output saved successfully")
+            
+            # Save visualizations if they exist
+            if 'visualizations' in output and output['visualizations']:
+                for i, viz_path in enumerate(output['visualizations']):
+                    if os.path.exists(viz_path):
+                        with open(viz_path, 'rb') as f:
+                            viz_data = f.read()
+                            default_store.set_record(
+                                f'visualization_{i}.png',
+                                viz_data,
+                                content_type='image/png'
+                            )
+                print("Visualizations saved successfully")
+                
+        except Exception as e:
+            print(f"Error saving output: {str(e)}")
+            # Create error output
+            error_output = {
+                'error': str(e),
+                'status': 'failed',
+                'timestamp': datetime.now().isoformat()
+            }
+            default_store.set_record(
+                'ERROR',
+                error_output,
+                content_type='application/json'
+            )
         
         print("Analysis complete! Check the output in Apify storage.")
 

@@ -7,44 +7,85 @@ from datetime import datetime, timedelta
 class RedditDataCollector:
     def __init__(self, config):
         """Initialize with either a config file path or config dictionary"""
+        print("Initializing RedditDataCollector...")
+        
         if isinstance(config, dict):
             self.config = config
+            print("Using provided config dictionary")
         elif isinstance(config, (str, bytes, os.PathLike)):
+            print(f"Loading config from file: {config}")
             with open(config, 'r') as file:
                 self.config = yaml.safe_load(file)
         else:
             raise TypeError("config must be either a dictionary or a path to a config file")
         
-        # Initialize Reddit client
-        try:
-            self.reddit = Reddit(
-                client_id=os.environ['REDDIT_CLIENT_ID'],
-                client_secret=os.environ['REDDIT_CLIENT_SECRET'],
-                user_agent=os.environ['REDDIT_USER_AGENT']
-            )
-            print("Debug - Reddit client initialized successfully")
-        except Exception as e:
-            print(f"Error initializing Reddit client: {str(e)}")
-            raise
-        
-        # Set default values if not provided
-        self.subreddits = self.config.get('subreddits', ['wallstreetbets', 'stocks', 'investing'])
+        # Extract configuration
+        self.subreddits = self.config.get('subreddits', [])
         self.time_filter = self.config.get('timeframe', 'week')
         self.post_limit = self.config.get('post_limit', 100)
+        
+        print(f"Configuration loaded:")
+        print(f"- Subreddits: {self.subreddits}")
+        print(f"- Time filter: {self.time_filter}")
+        print(f"- Post limit: {self.post_limit}")
+        
+        # Initialize Reddit client with detailed logging
+        try:
+            client_id = os.environ.get('REDDIT_CLIENT_ID')
+            client_secret = os.environ.get('REDDIT_CLIENT_SECRET')
+            user_agent = os.environ.get('REDDIT_USER_AGENT')
+            
+            print("\nReddit API Credentials Check:")
+            print(f"- Client ID: {'✓ Present' if client_id else '✗ Missing'} (Length: {len(client_id) if client_id else 0})")
+            print(f"- Client Secret: {'✓ Present' if client_secret else '✗ Missing'} (Length: {len(client_secret) if client_secret else 0})")
+            print(f"- User Agent: {user_agent}")
+            
+            print("\nInitializing Reddit client...")
+            self.reddit = Reddit(
+                client_id=client_id,
+                client_secret=client_secret,
+                user_agent=user_agent
+            )
+            print("Reddit client instance created")
+            
+            # Verify credentials
+            print("\nVerifying Reddit API credentials...")
+            test_subreddit = self.reddit.subreddit('test')
+            test_subreddit.display_name
+            print("✓ Credentials verified successfully")
+            
+        except Exception as e:
+            print("\n❌ Reddit API Authentication Error:")
+            if '401' in str(e):
+                print("- Status: 401 Unauthorized")
+                print("- Cause: Invalid credentials")
+                print("- Solution: Double-check your Client ID and Client Secret")
+            elif '403' in str(e):
+                print("- Status: 403 Forbidden")
+                print("- Cause: Insufficient permissions")
+                print("- Solution: Ensure your Reddit API application has the correct scope")
+            else:
+                print(f"- Unexpected error: {str(e)}")
+            raise
 
     def collect_data(self):
         """Collect data from specified subreddits"""
+        print("\nStarting data collection process...")
         all_posts = []
         
         for subreddit_name in self.subreddits:
             try:
-                print(f"Collecting data from r/{subreddit_name}...")
+                print(f"\nProcessing r/{subreddit_name}:")
+                print("- Initializing subreddit connection...")
                 subreddit = self.reddit.subreddit(subreddit_name)
                 
-                # Test authentication
-                subreddit.display_name  # This will raise an error if authentication fails
+                # Test subreddit access
+                print("- Testing subreddit access...")
+                subreddit.display_name
+                print("✓ Subreddit access verified")
                 
-                # Get posts based on timeframe
+                # Get posts
+                print(f"- Fetching posts (limit: {self.post_limit}, timeframe: {self.time_filter})...")
                 if self.time_filter == 'day':
                     posts = subreddit.top('day', limit=self.post_limit)
                 elif self.time_filter == 'week':
@@ -54,6 +95,7 @@ class RedditDataCollector:
                 else:
                     posts = subreddit.top('year', limit=self.post_limit)
 
+                post_count = 0
                 for post in posts:
                     post_data = {
                         'subreddit': subreddit_name,
@@ -66,19 +108,38 @@ class RedditDataCollector:
                         'url': post.url
                     }
                     all_posts.append(post_data)
+                    post_count += 1
                     
+                    if post_count % 10 == 0:
+                        print(f"  - Processed {post_count} posts...")
+                
+                print(f"✓ Successfully collected {post_count} posts from r/{subreddit_name}")
+                
             except Exception as e:
-                print(f"Error collecting data from r/{subreddit_name}: {str(e)}")
+                print(f"\n❌ Error collecting data from r/{subreddit_name}:")
+                print(f"- Error type: {type(e).__name__}")
+                print(f"- Error message: {str(e)}")
+                if '401' in str(e):
+                    print("- Authentication failed. Please check your credentials.")
+                elif '403' in str(e):
+                    print("- Access forbidden. Check if the subreddit is private or quarantined.")
+                elif '404' in str(e):
+                    print("- Subreddit not found. Check if the name is correct.")
                 continue
         
+        print("\nData collection summary:")
+        print(f"- Total posts collected: {len(all_posts)}")
+        print(f"- Subreddits processed: {len(self.subreddits)}")
+        
         if not all_posts:
-            # Return empty DataFrame with expected columns
+            print("⚠️ Warning: No posts were collected!")
             return pd.DataFrame(columns=[
                 'subreddit', 'title', 'selftext', 'score', 'comments',
                 'created_utc', 'id', 'url'
             ])
-            
+        
         df = pd.DataFrame(all_posts)
-        print(f"Debug - Collected {len(df)} posts total")
-        print(f"Debug - DataFrame columns: {df.columns.tolist()}")
-        return df 
+        print("\nDataFrame created successfully:")
+        print(f"- Shape: {df.shape}")
+        print(f"- Columns: {df.columns.tolist()}")
+        return df
