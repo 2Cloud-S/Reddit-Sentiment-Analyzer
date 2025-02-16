@@ -5,7 +5,8 @@ import os
 from datetime import datetime, timedelta
 import re
 import time
-from prawcore import Requestor, Authenticator, ReadOnlyAuthorizer, Session
+from prawcore import Requestor, Authenticator, ScriptAuthorizer
+from prawcore.auth import BaseAuthenticator
 
 class RedditDataCollector:
     def __init__(self, config):
@@ -25,35 +26,37 @@ class RedditDataCollector:
                 print(f"- Client ID: {config['client_id']}")
                 print(f"- User Agent: {config['user_agent']}")
                 
-                # Set up manual authentication
+                # Set up the authenticator with proper OAuth2 flow
                 requestor = Requestor(config['user_agent'], timeout=30)
                 authenticator = Authenticator(
                     requestor,
                     config['client_id'],
                     config['client_secret'],
+                    redirect_uri='http://localhost:8080'
                 )
                 
-                # Create read-only authorizer
-                auth = ReadOnlyAuthorizer(authenticator)
-                auth.refresh()  # Explicitly refresh the token
+                # Use ScriptAuthorizer for script-type apps
+                authorizer = ScriptAuthorizer(
+                    authenticator,
+                    refresh_token=None,  # Not needed for script auth
+                    username=config.get('redditUsername'),
+                    password=None  # No password needed
+                )
                 
-                # Create session
-                session = Session(auth)
-                
-                # Initialize PRAW with existing session
+                # Initialize Reddit instance with the authorizer
                 self.reddit = Reddit(
-                    client_id=config['client_id'],
-                    client_secret=config['client_secret'],
+                    requestor=requestor._http,
+                    authenticator=authenticator,
                     user_agent=config['user_agent'],
-                    requestor_kwargs={'session': session},
-                    check_for_async=False
+                    check_for_updates=False,
+                    token_manager=authorizer
                 )
                 
-                # Test authentication with simple API call
                 print("Testing authentication...")
                 try:
-                    # Test with minimal API call
-                    self.reddit.auth.scopes()
+                    # Test with read-only scope
+                    subreddit = self.reddit.subreddit('announcements')
+                    next(subreddit.hot(limit=1))
                     print("✓ Reddit API authentication successful")
                     
                     # Store configuration
@@ -66,7 +69,7 @@ class RedditDataCollector:
                     return
                     
                 except Exception as e:
-                    print(f"⚠️ Authentication test failed: {str(e)}")
+                    print(f"⚠️ Read test failed: {str(e)}")
                     raise
                 
             except Exception as e:
@@ -80,7 +83,9 @@ class RedditDataCollector:
                 elif '401' in str(e):
                     print("- Issue: Unauthorized access")
                     print("- Solution: Check if your Reddit app is properly configured")
-                    print("- Note: Ensure app type is 'script' and redirect URI is correct")
+                    print("- Required app settings:")
+                    print("  * Type: script")
+                    print("  * Redirect URI: http://localhost:8080")
                 
                 if attempt == max_retries - 1:
                     raise ValueError(f"Failed to initialize Reddit client after {max_retries} attempts")
