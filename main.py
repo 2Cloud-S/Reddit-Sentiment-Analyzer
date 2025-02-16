@@ -65,6 +65,9 @@ def main():
         
         # Initialize components with single config
         collector = RedditDataCollector(config)
+        analyzer = SentimentAnalyzer()
+        processor = MathProcessor()
+        visualizer = Visualizer()
         
         # Collect and process data
         print("Collecting Reddit data...")
@@ -72,63 +75,6 @@ def main():
         
         if df.empty:
             print("Warning: No data collected")
-            # Handle empty data case...
-        else:
-            # Process data normally...
-
-    except Exception as e:
-        print(f"Error reading input: {str(e)}")
-        input_data = {}
-    
-    # Validate Reddit credentials with debug logging
-    client_id = input_data.get('clientId')
-    client_secret = input_data.get('clientSecret')
-    user_agent = input_data.get('userAgent', 'SentimentAnalysis/1.0')
-    
-    print("Debug - Final credentials state:")
-    print(f"- Client ID: {'Present' if client_id else 'Missing'}")
-    print(f"- Client Secret: {'Present' if client_secret else 'Missing'}")
-    print(f"- User Agent: {user_agent}")
-    
-    if not client_id or not client_secret:
-        raise ValueError(
-            "Reddit API credentials are required. Please provide 'clientId' and 'clientSecret' "
-            "in the input. You can get these from https://www.reddit.com/prefs/apps"
-        )
-    
-    # Validate and format user agent
-    if not re.match(r'^[a-zA-Z]+:[a-zA-Z0-9_-]+:v\d+\.\d+\s+\(by\s+/u/[a-zA-Z0-9_-]+\)$', user_agent):
-        print("⚠️ Warning: User agent format does not match Reddit's requirements")
-        print("Formatting user agent to match requirements...")
-        user_agent = f"script:RedditSentimentAnalyzer:v1.0 (by /u/{user_agent.replace('/', '_')})"
-        print(f"Updated user agent: {user_agent}")
-    
-    # Set Reddit credentials in environment variables
-    os.environ['REDDIT_CLIENT_ID'] = str(client_id)
-    os.environ['REDDIT_CLIENT_SECRET'] = str(client_secret)
-    os.environ['REDDIT_USER_AGENT'] = user_agent
-    
-    # Update config with input parameters
-    config = {
-        'subreddits': input_data.get('subreddits', ['wallstreetbets', 'stocks', 'investing']),
-        'timeframe': input_data.get('timeframe', 'week'),
-        'post_limit': input_data.get('postLimit', 100)
-    }
-    
-    # Initialize components
-    collector = RedditDataCollector(config)
-    analyzer = SentimentAnalyzer()
-    processor = MathProcessor()
-    visualizer = Visualizer()
-    
-    try:
-        # Process data
-        print("Collecting Reddit data...")
-        df = collector.collect_data()
-        
-        if df.empty:
-            print("Warning: No data collected. Check your Reddit API credentials and subreddit names.")
-            # Create minimal output
             output = {
                 'metrics': {},
                 'visualizations': [],
@@ -167,45 +113,17 @@ def main():
                 }
             }
         
-        # Save output to the default store
+        # Save output to key-value store
         print("Saving output to key-value store...")
-        try:
-            default_store.set_record(
-                'OUTPUT',
-                output,
-                content_type='application/json'
-            )
-            print("Output saved successfully")
-            
-            # Save visualizations if they exist
-            if 'visualizations' in output and output['visualizations']:
-                for i, viz_path in enumerate(output['visualizations']):
-                    if os.path.exists(viz_path):
-                        with open(viz_path, 'rb') as f:
-                            viz_data = f.read()
-                            default_store.set_record(
-                                f'visualization_{i}.png',
-                                viz_data,
-                                content_type='image/png'
-                            )
-                print("Visualizations saved successfully")
-                
-        except Exception as e:
-            print(f"Error saving output: {str(e)}")
-            # Create error output
-            error_output = {
-                'error': str(e),
-                'status': 'failed',
-                'timestamp': datetime.now().isoformat()
-            }
-            default_store.set_record(
-                'ERROR',
-                error_output,
-                content_type='application/json'
-            )
+        default_store.set_record(
+            'OUTPUT',
+            output,
+            content_type='application/json'
+        )
+        print("Output saved successfully")
         
         print("Analysis complete! Check the output in Apify storage.")
-
+        
     except Exception as e:
         print(f"Error in main processing: {str(e)}")
         raise
