@@ -95,46 +95,65 @@ class RedditDataCollector:
 
     def collect_data(self):
         """Collect data from specified subreddits"""
+        print("Collecting Reddit data...")
         all_posts = []
         
         for subreddit_name in self.subreddits:
+            print(f"\nProcessing r/{subreddit_name}:")
             try:
-                print(f"\nProcessing r/{subreddit_name}:")
-                print("- Initializing subreddit connection...")
+                # Re-authenticate before accessing each subreddit
+                print("- Re-authenticating...")
+                self.reddit.auth.refresh()
                 
-                # Get subreddit instance with error handling
+                print("- Initializing subreddit connection...")
+                subreddit = self.reddit.subreddit(subreddit_name)
+                
+                # Verify access with proper error handling
                 try:
-                    subreddit = self.reddit.subreddit(subreddit_name)
-                    # Verify access by getting basic info
-                    _ = subreddit.display_name
+                    display_name = subreddit.display_name
                     print(f"✓ Connected to r/{subreddit_name}")
                 except Exception as e:
                     print(f"❌ Failed to connect to r/{subreddit_name}: {str(e)}")
+                    print("- Attempting to refresh authentication...")
+                    self.reddit.auth.refresh()
                     continue
                 
                 print(f"- Fetching posts (limit: {self.post_limit}, timeframe: {self.time_filter})...")
                 posts = []
                 
-                # Use proper listing endpoint with error handling
+                # Use proper listing endpoint with authentication check
                 try:
                     for post in subreddit.top(time_filter=self.time_filter, limit=self.post_limit):
+                        # Verify authentication for each batch
+                        if not self.reddit.auth.validate_on_submit:
+                            print("- Refreshing authentication token...")
+                            self.reddit.auth.refresh()
+                        
                         posts.append({
                             'subreddit': subreddit_name,
                             'title': post.title,
-                            'text': post.selftext,
+                            'selftext': post.selftext,
                             'score': post.score,
-                            'comments': post.num_comments,
+                            'num_comments': post.num_comments,
                             'created_utc': post.created_utc,
                             'id': post.id,
-                            'url': post.url
+                            'url': post.url,
+                            'author': str(post.author),
+                            'upvote_ratio': post.upvote_ratio
                         })
-                        print(f"- Collected post: {post.id}")
+                        print(f"  ✓ Collected post {len(posts)}/{self.post_limit}: {post.id}")
+                    
+                    print(f"✓ Successfully collected {len(posts)} posts from r/{subreddit_name}")
+                    all_posts.extend(posts)
+                    
                 except Exception as e:
                     print(f"❌ Error fetching posts: {str(e)}")
+                    print("- Error details:", {
+                        'type': type(e).__name__,
+                        'message': str(e),
+                        'subreddit': subreddit_name
+                    })
                     continue
-                
-                print(f"✓ Collected {len(posts)} posts from r/{subreddit_name}")
-                all_posts.extend(posts)
                 
             except Exception as e:
                 print(f"\n❌ Error processing r/{subreddit_name}:")
@@ -142,7 +161,15 @@ class RedditDataCollector:
                 print(f"- Error message: {str(e)}")
                 continue
         
-        return pd.DataFrame(all_posts) if all_posts else pd.DataFrame()
+        print("\nData collection summary:")
+        print(f"- Total posts collected: {len(all_posts)}")
+        print(f"- Subreddits processed: {len(self.subreddits)}")
+        
+        if not all_posts:
+            print("⚠️ Warning: No posts were collected!")
+            return pd.DataFrame()
+        
+        return pd.DataFrame(all_posts)
 
     def test_authentication(self):
         """Test Reddit API authentication"""

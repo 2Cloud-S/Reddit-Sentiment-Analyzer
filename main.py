@@ -1,6 +1,6 @@
 from apify_client import ApifyClient
 import os
-import logging
+import json
 from src.data_collector import RedditDataCollector
 from src.sentiment_analyzer import SentimentAnalyzer
 from src.math_processor import MathProcessor
@@ -29,55 +29,103 @@ def verify_nltk_setup():
         return False
 
 def main():
-    # Set up logging
-    logging.basicConfig(level=logging.DEBUG)
-    logger = logging.getLogger(__name__)
-    
     # Initialize the Apify client
     client = ApifyClient(os.environ['APIFY_TOKEN'])
     
     try:
         # Get input from Apify
-        logger.debug("Getting input from Apify...")
-        input_data = client.key_value_store().get_input() or {}
+        default_store = client.key_value_store(os.environ['APIFY_DEFAULT_KEY_VALUE_STORE_ID'])
+        input_record = default_store.get_record('INPUT')
         
-        if not input_data:
+        if not input_record or not input_record.get('value'):
             raise ValueError("No input provided")
             
-        # Construct user agent
+        input_data = input_record['value']
+        
+        # Construct user agent once
         user_agent = f"script:{input_data.get('appName', 'RedditSentimentAnalyzer')}:v{input_data.get('appVersion', '1.0').lstrip('v')} (by /u/{input_data['redditUsername']})"
         
-        # Create config from Apify input
+        # Create unified config
         config = {
             'client_id': input_data['clientId'],
             'client_secret': input_data['clientSecret'],
             'user_agent': user_agent,
+            'appName': input_data.get('appName', 'RedditSentimentAnalyzer'),
+            'appVersion': input_data.get('appVersion', 'v1.0'),
             'redditUsername': input_data['redditUsername'],
-            'subreddits': input_data.get('subreddits', ['wallstreetbets']),
-            'timeframe': input_data.get('timeframe', 'day'),
-            'postLimit': input_data.get('postLimit', 2)
+            'subreddits': input_data.get('subreddits', ['wallstreetbets', 'stocks', 'investing']),
+            'timeframe': input_data.get('timeframe', 'week'),
+            'postLimit': input_data.get('postLimit', 100)
         }
         
-        logger.debug(f"Configuration prepared (excluding secrets)")
-        
-        # Initialize collector and collect data
-        collector = RedditDataCollector(config)
-        data = collector.collect_data()
-        
-        # Store results in Apify dataset
-        logger.debug(f"Storing {len(data)} posts in Apify dataset...")
-        default_dataset = client.dataset()
-        default_dataset.push_data({
-            'post_count': len(data),
-            'subreddits_analyzed': config['subreddits'],
-            'timeframe': config['timeframe'],
-            'data': data.to_dict('records')
+        print("Debug - Configuration:", {
+            **config,
+            'client_secret': '[HIDDEN]'
         })
         
-        logger.info("✓ Analysis complete and data stored")
+        # Initialize components with single config
+        collector = RedditDataCollector(config)
+        analyzer = SentimentAnalyzer()
+        processor = MathProcessor()
+        visualizer = Visualizer()
+        
+        # Collect and process data
+        print("Collecting Reddit data...")
+        df = collector.collect_data()
+        
+        if df.empty:
+            print("Warning: No data collected")
+            output = {
+                'metrics': {},
+                'visualizations': [],
+                'analysis_summary': {
+                    'total_posts_analyzed': 0,
+                    'timeframe': config['timeframe'],
+                    'subreddits_analyzed': config['subreddits'],
+                    'error': 'No data collected. Possible authentication error.'
+                }
+            }
+        else:
+            print("Analyzing sentiment...")
+            df = analyzer.analyze_sentiment(df)
+            
+            print("Calculating metrics...")
+            metrics = processor.calculate_metrics(df)
+            
+            # Generate visualizations
+            print("Generating visualizations...")
+            visualization_paths = []
+            visualization_paths.append(visualizer.plot_sentiment_distribution(df))
+            visualization_paths.append(visualizer.plot_engagement_vs_sentiment(df))
+            visualization_paths.append(visualizer.plot_sentiment_time_series(df))
+            visualization_paths.append(visualizer.plot_advanced_metrics(df))
+            visualization_paths.append(visualizer.plot_emotion_distribution(df))
+            visualization_paths.append(visualizer.plot_prediction_analysis(df))
+            
+            # Prepare output
+            output = {
+                'metrics': metrics,
+                'visualizations': visualization_paths,
+                'analysis_summary': {
+                    'total_posts_analyzed': len(df),
+                    'timeframe': config['timeframe'],
+                    'subreddits_analyzed': config['subreddits']
+                }
+            }
+        
+        # Save output to key-value store
+        print("Saving output to key-value store...")
+        default_store.set_record(
+            'OUTPUT',
+            output,
+            content_type='application/json'
+        )
+        print("Output saved successfully")
+        
+        print("Analysis complete! Check the output in Apify storage.")
         
     except Exception as e:
-        logger.error(f"Error during execution: {str(e)}")
+        print(f"Error in main processing: {str(e)}")
         raise
 
 if __name__ == "__main__":

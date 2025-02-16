@@ -1,7 +1,7 @@
 reddit:
   client_id: "sIzwVhgwRwCGQ39qYOgSnA"
   client_secret: "ki4WFaeD93RYOmyEnoW4hf4Dx8miKg"
-  user_agent: "script:SentimentAnalysis:v1.0 (by /u/your_username)"
+  user_agent: "script:SentimentAnalysis:v1.0 (by /u/meshmasc)"
 
 subreddits:
   - "wallstreetbets"
