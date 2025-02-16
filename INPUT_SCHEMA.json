@@ -7,22 +7,24 @@
         "clientId": {
             "title": "Reddit Client ID",
             "type": "string",
-            "description": "Your Reddit API Client ID from https://www.reddit.com/prefs/apps",
-            "editor": "textfield"
+            "description": "Your Reddit API Client ID"
         },
         "clientSecret": {
             "title": "Reddit Client Secret",
             "type": "string",
             "description": "Your Reddit API Client Secret",
-            "editor": "textfield",
             "isSecret": true
         },
         "redditUsername": {
             "title": "Reddit Username",
             "type": "string",
-            "description": "Your Reddit username (without /u/)",
-            "pattern": "^[A-Za-z0-9_-]+$",
-            "editor": "textfield"
+            "description": "Username of the Reddit account that created the app"
+        },
+        "userAgent": {
+            "title": "User Agent",
+            "type": "string",
+            "description": "Custom user agent string",
+            "default": "script:SentimentAnalysis:v1.0 (by /u/USERNAME)"
         },
         "appName": {
             "title": "App Name",
@@ -66,5 +68,5 @@
             "editor": "number"
         }
     },
-    "required": ["clientId", "clientSecret", "redditUsername"]
+    "required": ["clientId", "clientSecret", "redditUsername", "userAgent"]
 } 
