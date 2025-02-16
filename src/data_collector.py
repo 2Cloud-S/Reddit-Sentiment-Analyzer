@@ -5,13 +5,17 @@ import os
 from datetime import datetime, timedelta
 import re
 import time
-from prawcore import Requestor, Authenticator, ScriptAuthorizer
-from prawcore.auth import BaseAuthenticator
+from prawcore import Requestor, Authorizer
+from prawcore.auth import ScriptAuthorizer, TrustedAuthenticator
 
 class RedditDataCollector:
     def __init__(self, config):
         """Initialize with configuration dictionary"""
-        print("Initializing RedditDataCollector...")
+        print("\n=== Reddit Client Initialization ===")
+        print("Environment Variables:")
+        print(f"- NLTK_DATA: {os.getenv('NLTK_DATA')}")
+        print(f"- APIFY_TOKEN exists: {bool(os.getenv('APIFY_TOKEN'))}")
+        print(f"- APIFY_DEFAULT_KEY_VALUE_STORE_ID exists: {bool(os.getenv('APIFY_DEFAULT_KEY_VALUE_STORE_ID'))}")
         
         # Validate required fields
         required_fields = ['client_id', 'client_secret', 'user_agent']
@@ -22,42 +26,51 @@ class RedditDataCollector:
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                print(f"\nAttempt {attempt + 1} to initialize Reddit client:")
+                print(f"\n=== Authentication Attempt {attempt + 1}/{max_retries} ===")
+                print("Client Configuration:")
                 print(f"- Client ID: {config['client_id']}")
                 print(f"- User Agent: {config['user_agent']}")
+                print(f"- Username: {config.get('redditUsername')}")
                 
                 # Set up the authenticator with proper OAuth2 flow
                 requestor = Requestor(config['user_agent'], timeout=30)
-                authenticator = Authenticator(
+                print("\nInitializing OAuth2 Flow:")
+                print("1. Creating Requestor...")
+                
+                # Use TrustedAuthenticator instead of Authenticator
+                authenticator = TrustedAuthenticator(
                     requestor,
                     config['client_id'],
-                    config['client_secret'],
-                    redirect_uri='http://localhost:8080'
+                    config['client_secret']
                 )
+                print("2. TrustedAuthenticator created successfully")
                 
-                # Use ScriptAuthorizer for script-type apps
-                authorizer = ScriptAuthorizer(
-                    authenticator,
-                    refresh_token=None,  # Not needed for script auth
-                    username=config.get('redditUsername'),
-                    password=None  # No password needed
-                )
+                # Debug HTTP requests
+                def log_request(request):
+                    print(f"\nOutgoing Request:")
+                    print(f"- Method: {request.method}")
+                    print(f"- URL: {request.url}")
+                    print(f"- Headers: {request.headers}")
+                    return request
+
+                requestor._http.hooks['request'] = [log_request]
                 
-                # Initialize Reddit instance with the authorizer
+                # Initialize Reddit instance directly with credentials
+                print("\nCreating Reddit Instance:")
                 self.reddit = Reddit(
-                    requestor=requestor._http,
-                    authenticator=authenticator,
+                    client_id=config['client_id'],
+                    client_secret=config['client_secret'],
                     user_agent=config['user_agent'],
-                    check_for_updates=False,
-                    token_manager=authorizer
+                    requestor=requestor._http,
+                    check_for_updates=False
                 )
                 
-                print("Testing authentication...")
+                print("\nTesting Authentication:")
                 try:
-                    # Test with read-only scope
                     subreddit = self.reddit.subreddit('announcements')
+                    print("- Attempting to fetch a test post...")
                     next(subreddit.hot(limit=1))
-                    print("✓ Reddit API authentication successful")
+                    print("✓ Authentication test successful")
                     
                     # Store configuration
                     self.config = config
@@ -65,11 +78,20 @@ class RedditDataCollector:
                     self.time_filter = config.get('timeframe', 'week')
                     self.post_limit = config.get('postLimit', 100)
                     
-                    print("\nConfiguration loaded successfully")
+                    print("\nFinal Configuration:")
+                    print(f"- Subreddits: {self.subreddits}")
+                    print(f"- Time Filter: {self.time_filter}")
+                    print(f"- Post Limit: {self.post_limit}")
                     return
                     
                 except Exception as e:
-                    print(f"⚠️ Read test failed: {str(e)}")
+                    print(f"\n⚠️ Authentication Test Failed:")
+                    print(f"- Error Type: {type(e).__name__}")
+                    print(f"- Error Message: {str(e)}")
+                    if hasattr(e, 'response'):
+                        print(f"- Status Code: {e.response.status_code}")
+                        print(f"- Response Headers: {e.response.headers}")
+                        print(f"- Response Body: {e.response.text}")
                     raise
                 
             except Exception as e:
@@ -95,81 +117,63 @@ class RedditDataCollector:
 
     def collect_data(self):
         """Collect data from specified subreddits"""
-        print("Collecting Reddit data...")
+        print("\n=== Starting Data Collection ===")
         all_posts = []
         
         for subreddit_name in self.subreddits:
             print(f"\nProcessing r/{subreddit_name}:")
             try:
-                # Re-authenticate before accessing each subreddit
-                print("- Re-authenticating...")
-                self.reddit.auth.refresh()
+                print("1. Verifying Authentication:")
+                print("- Checking token validity...")
+                if hasattr(self.reddit.auth, 'access_token'):
+                    print(f"- Access Token: {self.reddit.auth.access_token[:10]}...")
                 
-                print("- Initializing subreddit connection...")
+                print("\n2. Initializing Subreddit:")
                 subreddit = self.reddit.subreddit(subreddit_name)
+                print(f"- Subreddit object created: {subreddit}")
                 
-                # Verify access with proper error handling
-                try:
-                    display_name = subreddit.display_name
-                    print(f"✓ Connected to r/{subreddit_name}")
-                except Exception as e:
-                    print(f"❌ Failed to connect to r/{subreddit_name}: {str(e)}")
-                    print("- Attempting to refresh authentication...")
-                    self.reddit.auth.refresh()
-                    continue
+                print("\n3. Fetching Posts:")
+                print(f"- Time Filter: {self.time_filter}")
+                print(f"- Post Limit: {self.post_limit}")
                 
-                print(f"- Fetching posts (limit: {self.post_limit}, timeframe: {self.time_filter})...")
                 posts = []
-                
-                # Use proper listing endpoint with authentication check
-                try:
-                    for post in subreddit.top(time_filter=self.time_filter, limit=self.post_limit):
-                        # Verify authentication for each batch
-                        if not self.reddit.auth.validate_on_submit:
-                            print("- Refreshing authentication token...")
-                            self.reddit.auth.refresh()
-                        
-                        posts.append({
-                            'subreddit': subreddit_name,
-                            'title': post.title,
-                            'selftext': post.selftext,
-                            'score': post.score,
-                            'num_comments': post.num_comments,
-                            'created_utc': post.created_utc,
-                            'id': post.id,
-                            'url': post.url,
-                            'author': str(post.author),
-                            'upvote_ratio': post.upvote_ratio
-                        })
-                        print(f"  ✓ Collected post {len(posts)}/{self.post_limit}: {post.id}")
+                for post in subreddit.top(time_filter=self.time_filter, limit=self.post_limit):
+                    print(f"\nProcessing Post {len(posts) + 1}/{self.post_limit}:")
+                    print(f"- ID: {post.id}")
+                    print(f"- Title: {post.title[:50]}...")
                     
-                    print(f"✓ Successfully collected {len(posts)} posts from r/{subreddit_name}")
-                    all_posts.extend(posts)
-                    
-                except Exception as e:
-                    print(f"❌ Error fetching posts: {str(e)}")
-                    print("- Error details:", {
-                        'type': type(e).__name__,
-                        'message': str(e),
-                        'subreddit': subreddit_name
+                    posts.append({
+                        'subreddit': subreddit_name,
+                        'title': post.title,
+                        'selftext': post.selftext,
+                        'score': post.score,
+                        'num_comments': post.num_comments,
+                        'created_utc': post.created_utc,
+                        'id': post.id,
+                        'url': post.url,
+                        'author': str(post.author),
+                        'upvote_ratio': post.upvote_ratio
                     })
-                    continue
+                    
+                print(f"\n✓ Successfully collected {len(posts)} posts from r/{subreddit_name}")
+                all_posts.extend(posts)
                 
             except Exception as e:
                 print(f"\n❌ Error processing r/{subreddit_name}:")
-                print(f"- Error type: {type(e).__name__}")
-                print(f"- Error message: {str(e)}")
+                print(f"- Error Type: {type(e).__name__}")
+                print(f"- Error Message: {str(e)}")
+                if hasattr(e, 'response'):
+                    print("HTTP Response Details:")
+                    print(f"- Status Code: {e.response.status_code}")
+                    print(f"- Headers: {e.response.headers}")
+                    print(f"- Body: {e.response.text}")
                 continue
         
-        print("\nData collection summary:")
-        print(f"- Total posts collected: {len(all_posts)}")
-        print(f"- Subreddits processed: {len(self.subreddits)}")
+        print("\n=== Data Collection Summary ===")
+        print(f"- Total Posts Collected: {len(all_posts)}")
+        print(f"- Subreddits Processed: {len(self.subreddits)}")
         
-        if not all_posts:
-            print("⚠️ Warning: No posts were collected!")
-            return pd.DataFrame()
-        
-        return pd.DataFrame(all_posts)
+        return pd.DataFrame(all_posts) if all_posts else pd.DataFrame()
 
     def test_authentication(self):
         """Test Reddit API authentication"""
