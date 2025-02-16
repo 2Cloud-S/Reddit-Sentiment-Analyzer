@@ -34,19 +34,22 @@
             "title": "Application Name",
             "type": "string",
             "description": "Name of your Reddit application",
-            "default": "RedditSentimentAnalyzer"
+            "default": "RedditSentimentAnalyzer",
+            "editor": "textfield"
         },
         "appVersion": {
             "title": "Application Version",
             "type": "string",
             "description": "Version of your application",
-            "default": "v1.0"
+            "default": "v1.0",
+            "editor": "textfield"
         },
         "subreddits": {
             "title": "Subreddits",
             "type": "array",
             "description": "List of subreddits to analyze",
             "default": ["wallstreetbets", "stocks", "investing"],
+            "editor": "json",
             "items": {
                 "type": "string"
             }
@@ -56,6 +59,7 @@
             "type": "string",
             "description": "Time frame for data collection",
             "default": "week",
+            "editor": "select",
             "enum": ["hour", "day", "week", "month", "year", "all"]
         },
         "postLimit": {
@@ -64,7 +68,8 @@
             "description": "Maximum number of posts to collect per subreddit",
             "default": 100,
             "minimum": 1,
-            "maximum": 1000
+            "maximum": 1000,
+            "editor": "number"
         }
     },
     "required": ["clientId", "clientSecret", "redditUsername", "redditPassword"]
