@@ -15,14 +15,25 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Download NLTK data with explicit vader_lexicon download
-RUN python -c "import nltk; \
-    nltk.download(['punkt', 'stopwords', 'wordnet', 'averaged_perceptron_tagger', 'vader_lexicon'], \
-    download_dir='/usr/local/share/nltk_data')"
+# Set up NLTK data directory
+ENV NLTK_DATA=/usr/local/share/nltk_data
+RUN mkdir -p $NLTK_DATA
 
-# Verify NLTK data installation
-RUN python -c "import nltk.data; \
-    nltk.data.find('sentiment/vader_lexicon'); \
+# Download NLTK data with explicit verification
+RUN python -c "import nltk; \
+    nltk.download('punkt', download_dir='$NLTK_DATA'); \
+    nltk.download('stopwords', download_dir='$NLTK_DATA'); \
+    nltk.download('wordnet', download_dir='$NLTK_DATA'); \
+    nltk.download('averaged_perceptron_tagger', download_dir='$NLTK_DATA'); \
+    nltk.download('vader_lexicon', download_dir='$NLTK_DATA')"
+
+# Verify NLTK data installation with proper path
+RUN python -c "import nltk; \
+    import os; \
+    nltk.data.path.append('$NLTK_DATA'); \
+    print('NLTK data path:', nltk.data.path); \
+    print('VADER lexicon path:', os.path.join('$NLTK_DATA', 'sentiment/vader_lexicon.zip')); \
+    assert os.path.exists(os.path.join('$NLTK_DATA', 'sentiment/vader_lexicon.zip')), 'VADER lexicon not found'; \
     print('VADER lexicon verified successfully')"
 
 # Download spaCy model
@@ -35,9 +46,9 @@ FROM python:3.12-slim
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy NLTK data with specific paths
-COPY --from=builder /usr/local/share/nltk_data /usr/local/share/nltk_data
+# Set up NLTK data in final image
 ENV NLTK_DATA=/usr/local/share/nltk_data
+COPY --from=builder $NLTK_DATA $NLTK_DATA
 
 # Set working directory
 WORKDIR /usr/src/app
@@ -45,9 +56,16 @@ WORKDIR /usr/src/app
 # Copy source code and configuration files
 COPY . .
 
-# Ensure INPUT_SCHEMA.json is in the correct location
-RUN test -f INPUT_SCHEMA.json || (echo "INPUT_SCHEMA.json is missing" && exit 1)
-RUN test -f apify.json || (echo "apify.json is missing" && exit 1)
+# Verify final setup
+RUN python -c "import nltk; \
+    import os; \
+    nltk.data.path.append('$NLTK_DATA'); \
+    print('Final NLTK data verification:'); \
+    print('- NLTK data path:', nltk.data.path); \
+    print('- VADER lexicon exists:', os.path.exists(os.path.join('$NLTK_DATA', 'sentiment/vader_lexicon.zip'))); \
+    from nltk.sentiment.vader import SentimentIntensityAnalyzer; \
+    sia = SentimentIntensityAnalyzer(); \
+    print('VADER analyzer initialized successfully')"
 
 # Run the actor
 CMD ["python", "main.py"] 

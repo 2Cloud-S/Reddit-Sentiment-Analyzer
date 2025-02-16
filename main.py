@@ -9,7 +9,30 @@ from src.topic_processor import TopicProcessor
 from datetime import datetime
 import re
 
+def verify_nltk_setup():
+    """Verify NLTK setup and VADER lexicon availability"""
+    try:
+        import nltk
+        from nltk.sentiment.vader import SentimentIntensityAnalyzer
+        
+        print("\nVerifying NLTK setup:")
+        print(f"- NLTK data path: {nltk.data.path}")
+        
+        # Try to initialize VADER
+        sia = SentimentIntensityAnalyzer()
+        test_result = sia.polarity_scores("This is a test sentence.")
+        print("- VADER analyzer test:", test_result)
+        print("✓ NLTK setup verified successfully")
+        return True
+    except Exception as e:
+        print(f"❌ NLTK setup verification failed: {str(e)}")
+        return False
+
 def main():
+    # Add near the start of main()
+    if not verify_nltk_setup():
+        raise RuntimeError("NLTK setup verification failed")
+    
     # Initialize the Apify client
     client = ApifyClient(os.environ['APIFY_TOKEN'])
     
@@ -144,14 +167,6 @@ def main():
             print(f"Error in main processing: {str(e)}")
             raise
 
-        # Add near the top of main()
-        try:
-            import nltk
-            print("Debug - NLTK data path:", nltk.data.path)
-            print("Debug - Available NLTK data:", nltk.data.find('sentiment/vader_lexicon'))
-        except Exception as e:
-            print("Debug - NLTK data check failed:", str(e))
-
     except Exception as e:
         print(f"Error reading input: {str(e)}")
         input_data = {}
@@ -285,14 +300,6 @@ def main():
     except Exception as e:
         print(f"Error in main processing: {str(e)}")
         raise
-
-    # Add near the top of main()
-    try:
-        import nltk
-        print("Debug - NLTK data path:", nltk.data.path)
-        print("Debug - Available NLTK data:", nltk.data.find('sentiment/vader_lexicon'))
-    except Exception as e:
-        print("Debug - NLTK data check failed:", str(e))
 
 if __name__ == "__main__":
     main() 
