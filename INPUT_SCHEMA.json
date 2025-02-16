@@ -43,14 +43,10 @@
         "subreddits": {
             "title": "Subreddits",
             "type": "array",
-            "description": "List of subreddits to analyze",
+            "description": "List of subreddits to analyze (e.g., wallstreetbets, stocks, investing)",
             "prefill": ["wallstreetbets", "stocks", "investing"],
             "editor": "stringList",
-            "uniqueItems": true,
-            "items": {
-                "type": "string",
-                "pattern": "^[A-Za-z0-9_-]+$"
-            }
+            "uniqueItems": true
         },
         "timeframe": {
             "title": "Time Frame",
