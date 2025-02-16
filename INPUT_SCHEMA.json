@@ -33,7 +33,14 @@
         "timeframe": {
             "title": "Time Frame",
             "type": "string",
+            "description": "Time period for data collection",
             "enum": ["day", "week", "month", "year"],
+            "enumDescriptions": {
+                "day": "Posts from the last 24 hours",
+                "week": "Posts from the last 7 days",
+                "month": "Posts from the last 30 days",
+                "year": "Posts from the last 365 days"
+            },
             "default": "day",
             "editor": "select"
         },
