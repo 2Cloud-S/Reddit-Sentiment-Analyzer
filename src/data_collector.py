@@ -33,36 +33,36 @@ class RedditDataCollector:
             except Exception as e:
                 raise ValueError(f"Could not format user agent: {str(e)}")
 
-        # Initialize Reddit client with retry mechanism
+        # Initialize Reddit client with read-only mode and proper authentication
         max_retries = 3
         for attempt in range(max_retries):
             try:
                 self.reddit = Reddit(
                     client_id=config['client_id'],
                     client_secret=config['client_secret'],
-                    user_agent=config['user_agent']
+                    user_agent=config['user_agent'],
+                    username=config.get('redditUsername'),
+                    password=None,  # We're using script auth without password
+                    read_only=True  # Explicitly set read-only mode
                 )
                 
-                # Verify credentials
-                self.reddit.user.me()
+                # Test authentication with a simple API call
+                self.reddit.auth.scopes()
                 print("✓ Reddit API authentication successful")
+                
+                # Store configuration
+                self.config = config
+                self.subreddits = config.get('subreddits', [])
+                self.time_filter = config.get('timeframe', 'week')
+                self.post_limit = config.get('postLimit', 100)
                 break
+                
             except Exception as e:
+                print(f"\n⚠️ Authentication attempt {attempt + 1} failed:")
+                print(f"- Error: {str(e)}")
                 if attempt == max_retries - 1:
-                    raise ValueError(f"Failed to initialize Reddit client after {max_retries} attempts: {str(e)}")
-                print(f"Authentication attempt {attempt + 1} failed, retrying...")
+                    raise ValueError(f"Failed to initialize Reddit client after {max_retries} attempts")
                 time.sleep(2)  # Add delay between retries
-        
-        # Store configuration
-        self.config = config
-        self.subreddits = config.get('subreddits', [])
-        self.time_filter = config.get('timeframe', 'week')
-        self.post_limit = config.get('postLimit', 100)
-        
-        print(f"Configuration loaded:")
-        print(f"- Subreddits: {self.subreddits}")
-        print(f"- Time filter: {self.time_filter}")
-        print(f"- Post limit: {self.post_limit}")
 
     def collect_data(self):
         """Collect data from specified subreddits"""
@@ -73,31 +73,40 @@ class RedditDataCollector:
                 print(f"\nProcessing r/{subreddit_name}:")
                 print("- Initializing subreddit connection...")
                 
-                subreddit = self.reddit.subreddit(subreddit_name)
-                
-                # Test subreddit access
-                print("- Testing subreddit access...")
-                subreddit.id  # This will fail if we can't access the subreddit
-                print("✓ Subreddit access verified")
-                
+                # Use proper error handling for subreddit access
+                try:
+                    subreddit = self.reddit.subreddit(subreddit_name)
+                    # Test access with a simple attribute
+                    display_name = subreddit.display_name
+                    print(f"✓ Connected to r/{display_name}")
+                except Exception as e:
+                    print(f"❌ Failed to access r/{subreddit_name}: {str(e)}")
+                    continue
+
                 print(f"- Fetching posts (limit: {self.post_limit}, timeframe: {self.time_filter})...")
                 
-                # Collect posts with error handling
+                # Collect posts with proper error handling
                 posts = []
-                for post in subreddit.top(time_filter=self.time_filter, limit=self.post_limit):
-                    try:
-                        posts.append({
-                            'subreddit': subreddit_name,
-                            'title': post.title,
-                            'text': post.selftext,
-                            'score': post.score,
-                            'comments': post.num_comments,
-                            'created_utc': post.created_utc
-                        })
-                    except Exception as e:
-                        print(f"Error processing post: {str(e)}")
-                        continue
-                
+                try:
+                    for post in subreddit.top(time_filter=self.time_filter, limit=self.post_limit):
+                        try:
+                            posts.append({
+                                'subreddit': subreddit_name,
+                                'title': post.title,
+                                'text': post.selftext,
+                                'score': post.score,
+                                'comments': post.num_comments,
+                                'created_utc': post.created_utc,
+                                'id': post.id,
+                                'url': post.url
+                            })
+                        except Exception as post_e:
+                            print(f"- Error processing post: {str(post_e)}")
+                            continue
+                except Exception as fetch_e:
+                    print(f"❌ Error fetching posts: {str(fetch_e)}")
+                    continue
+
                 print(f"✓ Collected {len(posts)} posts from r/{subreddit_name}")
                 all_posts.extend(posts)
                 
