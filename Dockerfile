@@ -16,7 +16,14 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Download NLTK data with explicit vader_lexicon download
-RUN python -c "import nltk; nltk.download(['punkt', 'stopwords', 'wordnet', 'averaged_perceptron_tagger']); nltk.download('vader_lexicon', download_dir='/usr/local/share/nltk_data')"
+RUN python -c "import nltk; \
+    nltk.download(['punkt', 'stopwords', 'wordnet', 'averaged_perceptron_tagger', 'vader_lexicon'], \
+    download_dir='/usr/local/share/nltk_data')"
+
+# Verify NLTK data installation
+RUN python -c "import nltk.data; \
+    nltk.data.find('sentiment/vader_lexicon'); \
+    print('VADER lexicon verified successfully')"
 
 # Download spaCy model
 RUN python -m spacy download en_core_web_sm

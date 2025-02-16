@@ -3,6 +3,7 @@ import pandas as pd
 import yaml
 import os
 from datetime import datetime, timedelta
+import re
 
 class RedditDataCollector:
     def __init__(self, config):
@@ -19,6 +20,17 @@ class RedditDataCollector:
         else:
             raise TypeError("config must be either a dictionary or a path to a config file")
         
+        # Validate user agent format
+        user_agent = os.environ.get('REDDIT_USER_AGENT')
+        if not user_agent or not re.match(r'^[a-zA-Z]+:[a-zA-Z0-9_-]+:v\d+\.\d+\s+\(by\s+/u/[a-zA-Z0-9_-]+\)$', user_agent):
+            raise ValueError(
+                "Invalid user agent format. Must be: '<platform>:<app ID>:<version string> (by /u/<reddit username>)'\n"
+                "Example: 'script:RedditSentimentAnalyzer:v1.0 (by /u/your_username)'"
+            )
+        
+        print(f"\nUser Agent Validation:")
+        print(f"✓ Format: {user_agent}")
+        
         # Extract configuration
         self.subreddits = self.config.get('subreddits', [])
         self.time_filter = self.config.get('timeframe', 'week')
@@ -29,24 +41,23 @@ class RedditDataCollector:
         print(f"- Time filter: {self.time_filter}")
         print(f"- Post limit: {self.post_limit}")
         
-        # Format user agent properly
-        user_agent = os.environ.get('REDDIT_USER_AGENT')
-        if not user_agent or user_agent == 'SentimentAnalysis/1.0':
-            # Create a more Reddit-compliant user agent
-            user_agent = f"script:reddit-sentiment-analyzer:v1.0 (by /u/your_reddit_username)"
-            os.environ['REDDIT_USER_AGENT'] = user_agent
-        
-        print(f"Using user agent: {user_agent}")
-        
-        # Initialize Reddit client with read-only mode
+        # Initialize Reddit client with detailed logging
         try:
+            client_id = os.environ.get('REDDIT_CLIENT_ID')
+            client_secret = os.environ.get('REDDIT_CLIENT_SECRET')
+            
+            print("\nReddit API Credentials Check:")
+            print(f"- Client ID: {'✓ Present' if client_id else '✗ Missing'} (Length: {len(client_id) if client_id else 0})")
+            print(f"- Client Secret: {'✓ Present' if client_secret else '✗ Missing'} (Length: {len(client_secret) if client_secret else 0})")
+            print(f"- User Agent: {user_agent}")
+            
+            print("\nInitializing Reddit client...")
             self.reddit = Reddit(
-                client_id=os.environ.get('REDDIT_CLIENT_ID'),
-                client_secret=os.environ.get('REDDIT_CLIENT_SECRET'),
-                user_agent=user_agent,
-                read_only=True
+                client_id=client_id,
+                client_secret=client_secret,
+                user_agent=user_agent
             )
-            print("Reddit client initialized in read-only mode")
+            print("Reddit client instance created")
             
             # Verify credentials
             print("\nVerifying Reddit API credentials...")
@@ -80,39 +91,42 @@ class RedditDataCollector:
         for subreddit_name in self.subreddits:
             try:
                 print(f"\nProcessing r/{subreddit_name}:")
+                print("- Initializing subreddit connection...")
                 subreddit = self.reddit.subreddit(subreddit_name)
                 
-                # Verify subreddit access first
+                # Test subreddit access
                 print("- Testing subreddit access...")
-                display_name = subreddit.display_name
-                print(f"✓ Subreddit verified: r/{display_name}")
+                subreddit.display_name
+                print("✓ Subreddit access verified")
                 
-                # Get posts with detailed error handling
-                print(f"- Fetching {self.post_limit} posts from past {self.time_filter}...")
-                posts = subreddit.top(time_filter=self.time_filter, limit=self.post_limit)
-                
+                # Get posts
+                print(f"- Fetching posts (limit: {self.post_limit}, timeframe: {self.time_filter})...")
+                if self.time_filter == 'day':
+                    posts = subreddit.top('day', limit=self.post_limit)
+                elif self.time_filter == 'week':
+                    posts = subreddit.top('week', limit=self.post_limit)
+                elif self.time_filter == 'month':
+                    posts = subreddit.top('month', limit=self.post_limit)
+                else:
+                    posts = subreddit.top('year', limit=self.post_limit)
+
                 post_count = 0
                 for post in posts:
-                    try:
-                        post_data = {
-                            'subreddit': subreddit_name,
-                            'title': post.title,
-                            'selftext': post.selftext,
-                            'score': post.score,
-                            'comments': post.num_comments,
-                            'created_utc': post.created_utc,
-                            'id': post.id,
-                            'url': post.url
-                        }
-                        all_posts.append(post_data)
-                        post_count += 1
-                        
-                        if post_count % 10 == 0:
-                            print(f"  - Processed {post_count} posts...")
-                            
-                    except Exception as e:
-                        print(f"  ⚠️ Error processing post: {str(e)}")
-                        continue
+                    post_data = {
+                        'subreddit': subreddit_name,
+                        'title': post.title,
+                        'selftext': post.selftext,
+                        'score': post.score,
+                        'comments': post.num_comments,
+                        'created_utc': datetime.fromtimestamp(post.created_utc),
+                        'id': post.id,
+                        'url': post.url
+                    }
+                    all_posts.append(post_data)
+                    post_count += 1
+                    
+                    if post_count % 10 == 0:
+                        print(f"  - Processed {post_count} posts...")
                 
                 print(f"✓ Successfully collected {post_count} posts from r/{subreddit_name}")
                 
@@ -120,6 +134,12 @@ class RedditDataCollector:
                 print(f"\n❌ Error collecting data from r/{subreddit_name}:")
                 print(f"- Error type: {type(e).__name__}")
                 print(f"- Error message: {str(e)}")
+                if '401' in str(e):
+                    print("- Authentication failed. Please check your credentials.")
+                elif '403' in str(e):
+                    print("- Access forbidden. Check if the subreddit is private or quarantined.")
+                elif '404' in str(e):
+                    print("- Subreddit not found. Check if the name is correct.")
                 continue
         
         print("\nData collection summary:")
@@ -143,19 +163,13 @@ class RedditDataCollector:
         """Test Reddit API authentication"""
         try:
             print("\nTesting Reddit API authentication...")
-            # Test with a public subreddit first
-            test_subreddit = self.reddit.subreddit('announcements')
-            # Try to get the subreddit's display name (lightweight test)
-            display_name = test_subreddit.display_name
-            print(f"✓ Successfully accessed test subreddit: r/{display_name}")
-            
-            # Try to get a single post to verify data access
-            for post in test_subreddit.hot(limit=1):
-                print("✓ Successfully retrieved test post")
-                break
-            
+            # Try to access user identity
+            user = self.reddit.user.me()
+            if user is None:
+                print("⚠️ Warning: Authenticated but couldn't get user details")
+                return True
+            print(f"✓ Successfully authenticated as: {user.name}")
             return True
-        
         except Exception as e:
             print("\n❌ Authentication test failed:")
             print(f"- Error type: {type(e).__name__}")
@@ -164,7 +178,6 @@ class RedditDataCollector:
                 print("- Issue: Invalid credentials or incorrect format")
                 print("- Solution: Verify your client_id and client_secret")
                 print("- Note: Make sure you're using a 'script' type app")
-                print("- User Agent: ", os.environ.get('REDDIT_USER_AGENT'))
             elif '403' in str(e):
                 print("- Issue: Insufficient permissions")
                 print("- Solution: Check app permissions and user agent format")

@@ -7,48 +7,151 @@ from src.math_processor import MathProcessor
 from src.visualizer import Visualizer
 from src.topic_processor import TopicProcessor
 from datetime import datetime
+import re
 
 def main():
     # Initialize the Apify client
     client = ApifyClient(os.environ['APIFY_TOKEN'])
     
     try:
-        # Get input using the correct method from Apify SDK
-        default_kvs_id = os.environ.get('APIFY_DEFAULT_KEY_VALUE_STORE_ID')
-        print(f"Debug - Default KVS ID: {default_kvs_id}")
-        
-        if not default_kvs_id:
-            raise ValueError("APIFY_DEFAULT_KEY_VALUE_STORE_ID environment variable is not set")
-            
-        default_store = client.key_value_store(default_kvs_id)
+        # Get input
+        print("Debug - Default KVS ID:", os.environ['APIFY_DEFAULT_KEY_VALUE_STORE_ID'])
         print("Debug - Default store initialized")
         
-        # Get the input
-        input_data = None
-        try:
-            input_record = default_store.get_record('INPUT')
-            print(f"Debug - Raw input record: {input_record}")
-            
-            # Extract the value from the input record
-            if input_record and isinstance(input_record, dict):
-                if 'value' in input_record:
-                    input_data = input_record['value']
-                else:
-                    print("Warning: Input record does not contain 'value' field")
-            else:
-                print(f"Warning: Unexpected input record format: {type(input_record)}")
-            
-        except Exception as e:
-            print(f"Warning - Error getting input record: {str(e)}")
+        # Get input from Apify
+        default_store = client.key_value_store(os.environ['APIFY_DEFAULT_KEY_VALUE_STORE_ID'])
+        input_record = default_store.get_record('INPUT')
+        print("Debug - Raw input record:", input_record)
         
-        # Ensure input_data is a dictionary
-        input_data = input_data or {}
-        
+        input_data = input_record['value'] if input_record else {}
         print("Debug - Parsed input data:", {
-            k: (v if k != 'clientSecret' else '[HIDDEN]') 
-            for k, v in input_data.items()
+            **input_data,
+            'clientSecret': '[HIDDEN]' if 'clientSecret' in input_data else None
         })
         
+        # Construct user agent from components
+        reddit_username = input_data.get('redditUsername', '')
+        app_name = input_data.get('appName', 'RedditSentimentAnalyzer')
+        app_version = input_data.get('appVersion', 'v1.0')
+        
+        user_agent = f"script:{app_name}:{app_version} (by /u/{reddit_username})"
+        print(f"Constructed user agent: {user_agent}")
+        
+        # Set Reddit credentials in environment variables
+        os.environ['REDDIT_CLIENT_ID'] = str(input_data.get('clientId'))
+        os.environ['REDDIT_CLIENT_SECRET'] = str(input_data.get('clientSecret'))
+        os.environ['REDDIT_USER_AGENT'] = user_agent
+        
+        # Update config with input parameters
+        config = {
+            'subreddits': input_data.get('subreddits', ['wallstreetbets', 'stocks', 'investing']),
+            'timeframe': input_data.get('timeframe', 'week'),
+            'post_limit': input_data.get('postLimit', 100)
+        }
+        
+        # Initialize components
+        collector = RedditDataCollector(config)
+        analyzer = SentimentAnalyzer()
+        processor = MathProcessor()
+        visualizer = Visualizer()
+        
+        try:
+            # Process data
+            print("Collecting Reddit data...")
+            df = collector.collect_data()
+            
+            if df.empty:
+                print("Warning: No data collected. Check your Reddit API credentials and subreddit names.")
+                # Create minimal output
+                output = {
+                    'metrics': {},
+                    'visualizations': [],
+                    'analysis_summary': {
+                        'total_posts_analyzed': 0,
+                        'timeframe': config['timeframe'],
+                        'subreddits_analyzed': config['subreddits'],
+                        'error': 'No data collected. Possible authentication error.'
+                    }
+                }
+            else:
+                print("Analyzing sentiment...")
+                df = analyzer.analyze_sentiment(df)
+                
+                print("Calculating metrics...")
+                metrics = processor.calculate_metrics(df)
+                
+                # Generate visualizations
+                print("Generating visualizations...")
+                visualization_paths = []
+                visualization_paths.append(visualizer.plot_sentiment_distribution(df))
+                visualization_paths.append(visualizer.plot_engagement_vs_sentiment(df))
+                visualization_paths.append(visualizer.plot_sentiment_time_series(df))
+                visualization_paths.append(visualizer.plot_advanced_metrics(df))
+                visualization_paths.append(visualizer.plot_emotion_distribution(df))
+                visualization_paths.append(visualizer.plot_prediction_analysis(df))
+                
+                # Prepare output
+                output = {
+                    'metrics': metrics,
+                    'visualizations': visualization_paths,
+                    'analysis_summary': {
+                        'total_posts_analyzed': len(df),
+                        'timeframe': config['timeframe'],
+                        'subreddits_analyzed': config['subreddits']
+                    }
+                }
+            
+            # Save output to the default store
+            print("Saving output to key-value store...")
+            try:
+                default_store.set_record(
+                    'OUTPUT',
+                    output,
+                    content_type='application/json'
+                )
+                print("Output saved successfully")
+                
+                # Save visualizations if they exist
+                if 'visualizations' in output and output['visualizations']:
+                    for i, viz_path in enumerate(output['visualizations']):
+                        if os.path.exists(viz_path):
+                            with open(viz_path, 'rb') as f:
+                                viz_data = f.read()
+                                default_store.set_record(
+                                    f'visualization_{i}.png',
+                                    viz_data,
+                                    content_type='image/png'
+                                )
+                    print("Visualizations saved successfully")
+                    
+            except Exception as e:
+                print(f"Error saving output: {str(e)}")
+                # Create error output
+                error_output = {
+                    'error': str(e),
+                    'status': 'failed',
+                    'timestamp': datetime.now().isoformat()
+                }
+                default_store.set_record(
+                    'ERROR',
+                    error_output,
+                    content_type='application/json'
+                )
+            
+            print("Analysis complete! Check the output in Apify storage.")
+
+        except Exception as e:
+            print(f"Error in main processing: {str(e)}")
+            raise
+
+        # Add near the top of main()
+        try:
+            import nltk
+            print("Debug - NLTK data path:", nltk.data.path)
+            print("Debug - Available NLTK data:", nltk.data.find('sentiment/vader_lexicon'))
+        except Exception as e:
+            print("Debug - NLTK data check failed:", str(e))
+
     except Exception as e:
         print(f"Error reading input: {str(e)}")
         input_data = {}
@@ -69,10 +172,17 @@ def main():
             "in the input. You can get these from https://www.reddit.com/prefs/apps"
         )
     
+    # Validate and format user agent
+    if not re.match(r'^[a-zA-Z]+:[a-zA-Z0-9_-]+:v\d+\.\d+\s+\(by\s+/u/[a-zA-Z0-9_-]+\)$', user_agent):
+        print("⚠️ Warning: User agent format does not match Reddit's requirements")
+        print("Formatting user agent to match requirements...")
+        user_agent = f"script:RedditSentimentAnalyzer:v1.0 (by /u/{user_agent.replace('/', '_')})"
+        print(f"Updated user agent: {user_agent}")
+    
     # Set Reddit credentials in environment variables
     os.environ['REDDIT_CLIENT_ID'] = str(client_id)
     os.environ['REDDIT_CLIENT_SECRET'] = str(client_secret)
-    os.environ['REDDIT_USER_AGENT'] = str(user_agent)
+    os.environ['REDDIT_USER_AGENT'] = user_agent
     
     # Update config with input parameters
     config = {
