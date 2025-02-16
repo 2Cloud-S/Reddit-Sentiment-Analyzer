@@ -5,6 +5,7 @@ import os
 from datetime import datetime, timedelta
 import re
 import time
+from prawcore import Requestor, Authenticator, ReadOnlyAuthorizer, Session
 
 class RedditDataCollector:
     def __init__(self, config):
@@ -16,7 +17,7 @@ class RedditDataCollector:
         missing_fields = [field for field in required_fields if not config.get(field)]
         if missing_fields:
             raise ValueError(f"Missing required fields in config: {missing_fields}")
-        
+
         max_retries = 3
         for attempt in range(max_retries):
             try:
@@ -24,41 +25,62 @@ class RedditDataCollector:
                 print(f"- Client ID: {config['client_id']}")
                 print(f"- User Agent: {config['user_agent']}")
                 
-                # Initialize with proper OAuth2 script app flow
+                # Set up manual authentication
+                requestor = Requestor(config['user_agent'], timeout=30)
+                authenticator = Authenticator(
+                    requestor,
+                    config['client_id'],
+                    config['client_secret'],
+                )
+                
+                # Create read-only authorizer
+                auth = ReadOnlyAuthorizer(authenticator)
+                auth.refresh()  # Explicitly refresh the token
+                
+                # Create session
+                session = Session(auth)
+                
+                # Initialize PRAW with existing session
                 self.reddit = Reddit(
                     client_id=config['client_id'],
                     client_secret=config['client_secret'],
                     user_agent=config['user_agent'],
-                    username=config.get('redditUsername'),  # Include username
-                    password=None,  # No password needed for script type
-                    grant_type='client_credentials',  # Specify grant type
-                    duration='temporary'  # Use temporary access
+                    requestor_kwargs={'session': session},
+                    check_for_async=False
                 )
                 
-                # Test authentication with proper scope
+                # Test authentication with simple API call
                 print("Testing authentication...")
                 try:
-                    # Test with read scope
-                    subreddit = self.reddit.subreddit('announcements')
-                    next(subreddit.hot(limit=1))  # Actually fetch a post to verify access
-                    print("✓ Reddit API authentication successful with read scope")
+                    # Test with minimal API call
+                    self.reddit.auth.scopes()
+                    print("✓ Reddit API authentication successful")
+                    
+                    # Store configuration
+                    self.config = config
+                    self.subreddits = config.get('subreddits', [])
+                    self.time_filter = config.get('timeframe', 'week')
+                    self.post_limit = config.get('postLimit', 100)
+                    
+                    print("\nConfiguration loaded successfully")
+                    return
+                    
                 except Exception as e:
-                    print(f"⚠️ Read test failed: {str(e)}")
+                    print(f"⚠️ Authentication test failed: {str(e)}")
                     raise
-                
-                # Store configuration
-                self.config = config
-                self.subreddits = config.get('subreddits', [])
-                self.time_filter = config.get('timeframe', 'week')
-                self.post_limit = config.get('postLimit', 100)
-                
-                print("\nConfiguration loaded successfully")
-                return
                 
             except Exception as e:
                 print(f"\n⚠️ Authentication attempt {attempt + 1} failed:")
                 print(f"- Error type: {type(e).__name__}")
                 print(f"- Error message: {str(e)}")
+                
+                if 'invalid_grant' in str(e):
+                    print("- Issue: Invalid credentials")
+                    print("- Solution: Verify your client_id and client_secret")
+                elif '401' in str(e):
+                    print("- Issue: Unauthorized access")
+                    print("- Solution: Check if your Reddit app is properly configured")
+                    print("- Note: Ensure app type is 'script' and redirect URI is correct")
                 
                 if attempt == max_retries - 1:
                     raise ValueError(f"Failed to initialize Reddit client after {max_retries} attempts")
