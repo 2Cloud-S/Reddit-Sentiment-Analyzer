@@ -20,9 +20,9 @@
         "userAgent": {
             "title": "User Agent",
             "type": "string",
-            "description": "Unique identifier for your Reddit app",
-            "default": "SentimentAnalysis/1.0",
-            "editor": "textfield"
+            "description": "Format: script:app-name:v1.0 (by /u/your_reddit_username)",
+            "default": "script:reddit-sentiment-analyzer:v1.0 (by /u/your_reddit_username)",
+            "pattern": "^script:.+:.+ \\(by /u/.+\\)$"
         },
         "subreddits": {
             "title": "Subreddits",
