@@ -5,8 +5,9 @@ import os
 from datetime import datetime, timedelta
 import re
 import time
-from prawcore import Requestor, Authorizer
+from prawcore import Requestor
 from prawcore.auth import ScriptAuthorizer, TrustedAuthenticator
+import base64
 import sys
 import platform
 import praw
@@ -42,67 +43,40 @@ class RedditDataCollector:
                 print(f"- Client Secret length: {len(config['client_secret'])}")
                 print(f"- User Agent: {config['user_agent']}")
                 
-                # Before Authentication Request
+                # Create Basic Auth header
+                auth_string = f"{config['client_id']}:{config['client_secret']}"
+                auth_bytes = auth_string.encode('ascii')
+                auth_b64 = base64.b64encode(auth_bytes).decode('ascii')
+                
                 print("\n📡 Pre-Authentication Request:")
                 print("- Preparing HTTP headers...")
                 headers = {
                     'User-Agent': config['user_agent'],
+                    'Authorization': f'Basic {auth_b64}',
                     'Accept': 'application/json'
                 }
-                print("- Headers prepared:", headers)
+                print("- Headers prepared (Authorization header hidden)")
                 
-                # Set up the authenticator with proper OAuth2 flow
-                requestor = Requestor(config['user_agent'], timeout=30)
-                
-                # Debug HTTP requests with detailed logging
-                def log_request(request):
-                    timestamp = datetime.now().isoformat()
-                    print(f"\n🌐 Outgoing Request at {timestamp}:")
-                    print(f"- Method: {request.method}")
-                    print(f"- URL: {request.url}")
-                    print(f"- Headers: {dict(request.headers)}")
-                    if request.body:
-                        print(f"- Body Length: {len(request.body)} bytes")
-                    return request
-
-                def log_response(response):
-                    timestamp = datetime.now().isoformat()
-                    print(f"\n📥 Response Received at {timestamp}:")
-                    print(f"- Status Code: {response.status_code}")
-                    print(f"- Headers: {dict(response.headers)}")
-                    print(f"- Content Length: {len(response.content)} bytes")
-                    try:
-                        json_response = response.json()
-                        print("- Response Type: JSON")
-                        if 'error' in json_response:
-                            print(f"- Error: {json_response['error']}")
-                    except:
-                        print("- Response Type: Non-JSON")
-                    return response
-
-                requestor._http.hooks['request'] = [log_request]
-                requestor._http.hooks['response'] = [log_response]
-                
-                # Initialize Reddit instance
+                # Initialize Reddit instance with password flow
                 print("\n🔐 Creating Reddit Instance:")
-                print(f"Timestamp: {datetime.now().isoformat()}")
                 self.reddit = Reddit(
                     client_id=config['client_id'],
                     client_secret=config['client_secret'],
                     user_agent=config['user_agent'],
-                    requestor=requestor._http,
+                    username=config.get('redditUsername'),
+                    password=config.get('redditPassword'),  # Make sure this is provided in config
                     check_for_updates=False
                 )
                 
-                # Test Authentication
                 print("\n🔍 Testing Authentication:")
                 try:
                     print("- Attempting to fetch test data...")
+                    # Test with read-only operation first
+                    self.reddit.read_only = True
                     subreddit = self.reddit.subreddit('announcements')
                     test_post = next(subreddit.hot(limit=1))
                     print("✅ Authentication test successful")
                     print(f"- Test post ID: {test_post.id}")
-                    print(f"- Test post title: {test_post.title[:50]}...")
                     
                     # Store configuration
                     self.config = config
@@ -118,14 +92,13 @@ class RedditDataCollector:
                     return
                     
                 except Exception as e:
-                    print(f"\n⚠️ Authentication Test Failed at {datetime.now().isoformat()}:")
+                    print(f"\n⚠️ Authentication Test Failed:")
                     print(f"- Error Type: {type(e).__name__}")
                     print(f"- Error Message: {str(e)}")
                     if hasattr(e, 'response'):
                         print("\n🔍 API Response Details:")
                         print(f"- Status Code: {e.response.status_code}")
                         print(f"- Response Headers: {dict(e.response.headers)}")
-                        print(f"- Response Body: {e.response.text[:500]}...")
                     raise
                 
             except Exception as e:

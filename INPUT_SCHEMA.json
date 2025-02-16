@@ -7,64 +7,65 @@
         "clientId": {
             "title": "Reddit Client ID",
             "type": "string",
-            "description": "Your Reddit API Client ID from https://www.reddit.com/prefs/apps",
+            "description": "Your Reddit API client ID",
             "editor": "textfield"
         },
         "clientSecret": {
             "title": "Reddit Client Secret",
             "type": "string",
-            "description": "Your Reddit API Client Secret",
+            "description": "Your Reddit API client secret",
             "editor": "textfield",
             "isSecret": true
         },
         "redditUsername": {
             "title": "Reddit Username",
             "type": "string",
-            "description": "Your Reddit username (without /u/)",
-            "pattern": "^[A-Za-z0-9_-]+$",
+            "description": "Your Reddit username (without u/)",
             "editor": "textfield"
+        },
+        "redditPassword": {
+            "title": "Reddit Password",
+            "type": "string",
+            "description": "Your Reddit account password",
+            "editor": "textfield",
+            "isSecret": true
         },
         "appName": {
-            "title": "App Name",
+            "title": "Application Name",
             "type": "string",
-            "description": "Name of your Reddit app (alphanumeric, dashes, and underscores only)",
-            "pattern": "^[A-Za-z0-9_-]+$",
-            "default": "RedditSentimentAnalyzer",
-            "editor": "textfield"
+            "description": "Name of your Reddit application",
+            "default": "RedditSentimentAnalyzer"
         },
         "appVersion": {
-            "title": "App Version",
+            "title": "Application Version",
             "type": "string",
-            "description": "Version of your app (format: v1.0)",
-            "pattern": "^v\\d+\\.\\d+$",
-            "default": "v1.0",
-            "editor": "textfield"
+            "description": "Version of your application",
+            "default": "v1.0"
         },
         "subreddits": {
             "title": "Subreddits",
             "type": "array",
-            "description": "List of subreddits to analyze (e.g., wallstreetbets, stocks, investing)",
-            "prefill": ["wallstreetbets", "stocks", "investing"],
-            "editor": "stringList",
-            "uniqueItems": true
+            "description": "List of subreddits to analyze",
+            "default": ["wallstreetbets", "stocks", "investing"],
+            "items": {
+                "type": "string"
+            }
         },
         "timeframe": {
             "title": "Time Frame",
             "type": "string",
-            "description": "Time period for analysis",
-            "enum": ["day", "week", "month", "year"],
+            "description": "Time frame for data collection",
             "default": "week",
-            "editor": "select"
+            "enum": ["hour", "day", "week", "month", "year", "all"]
         },
         "postLimit": {
             "title": "Post Limit",
             "type": "integer",
-            "description": "Maximum number of posts to analyze per subreddit",
-            "minimum": 1,
-            "maximum": 1000,
+            "description": "Maximum number of posts to collect per subreddit",
             "default": 100,
-            "editor": "number"
+            "minimum": 1,
+            "maximum": 1000
         }
     },
-    "required": ["clientId", "clientSecret", "redditUsername"]
+    "required": ["clientId", "clientSecret", "redditUsername", "redditPassword"]
 } 
