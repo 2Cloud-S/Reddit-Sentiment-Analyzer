@@ -17,23 +17,6 @@ class RedditDataCollector:
         if missing_fields:
             raise ValueError(f"Missing required fields in config: {missing_fields}")
         
-        # Format user agent if needed
-        user_agent = config['user_agent']
-        user_agent_pattern = r'^script:[a-zA-Z0-9_-]+:v\d+\.\d+\s+\(by\s+/u/[a-zA-Z0-9_-]+\)$'
-        if not re.match(user_agent_pattern, user_agent):
-            print(f"⚠️ Invalid user agent format: {user_agent}")
-            print("Attempting to fix user agent format...")
-            try:
-                app_name = config.get('appName', 'RedditSentimentAnalyzer')
-                version = config.get('appVersion', 'v1.0').lstrip('v')
-                username = config.get('redditUsername', 'anonymous')
-                user_agent = f"script:{app_name}:v{version} (by /u/{username})"
-                config['user_agent'] = user_agent
-                print(f"✓ Fixed user agent: {user_agent}")
-            except Exception as e:
-                raise ValueError(f"Could not format user agent: {str(e)}")
-
-        # Initialize Reddit client with script auth
         max_retries = 3
         for attempt in range(max_retries):
             try:
@@ -41,20 +24,27 @@ class RedditDataCollector:
                 print(f"- Client ID: {config['client_id']}")
                 print(f"- User Agent: {config['user_agent']}")
                 
+                # Initialize with proper OAuth2 script app flow
                 self.reddit = Reddit(
                     client_id=config['client_id'],
                     client_secret=config['client_secret'],
                     user_agent=config['user_agent'],
-                    username=None,  # Remove username for client credentials flow
-                    password=None,
-                    read_only=True
+                    username=config.get('redditUsername'),  # Include username
+                    password=None,  # No password needed for script type
+                    grant_type='client_credentials',  # Specify grant type
+                    duration='temporary'  # Use temporary access
                 )
                 
-                # Test authentication with a public endpoint
+                # Test authentication with proper scope
                 print("Testing authentication...")
-                subreddit = self.reddit.subreddit('announcements')
-                _ = subreddit.display_name  # Simple test that doesn't require auth
-                print("✓ Reddit API authentication successful")
+                try:
+                    # Test with read scope
+                    subreddit = self.reddit.subreddit('announcements')
+                    next(subreddit.hot(limit=1))  # Actually fetch a post to verify access
+                    print("✓ Reddit API authentication successful with read scope")
+                except Exception as e:
+                    print(f"⚠️ Read test failed: {str(e)}")
+                    raise
                 
                 # Store configuration
                 self.config = config
@@ -62,24 +52,13 @@ class RedditDataCollector:
                 self.time_filter = config.get('timeframe', 'week')
                 self.post_limit = config.get('postLimit', 100)
                 
-                print("\nConfiguration loaded:")
-                print(f"- Subreddits: {self.subreddits}")
-                print(f"- Time filter: {self.time_filter}")
-                print(f"- Post limit: {self.post_limit}")
+                print("\nConfiguration loaded successfully")
                 return
                 
             except Exception as e:
                 print(f"\n⚠️ Authentication attempt {attempt + 1} failed:")
                 print(f"- Error type: {type(e).__name__}")
                 print(f"- Error message: {str(e)}")
-                
-                if 'invalid_grant' in str(e):
-                    print("- Issue: Invalid credentials")
-                    print("- Solution: Verify your client_id and client_secret")
-                elif '401' in str(e):
-                    print("- Issue: Unauthorized access")
-                    print("- Solution: Check if your Reddit app is properly configured as 'script' type")
-                    print("- Note: Make sure you've created the app at https://www.reddit.com/prefs/apps")
                 
                 if attempt == max_retries - 1:
                     raise ValueError(f"Failed to initialize Reddit client after {max_retries} attempts")
@@ -96,58 +75,47 @@ class RedditDataCollector:
                 print(f"\nProcessing r/{subreddit_name}:")
                 print("- Initializing subreddit connection...")
                 
-                # Use proper error handling for subreddit access
+                # Get subreddit instance with error handling
                 try:
                     subreddit = self.reddit.subreddit(subreddit_name)
-                    # Test access with a simple attribute
-                    display_name = subreddit.display_name
-                    print(f"✓ Connected to r/{display_name}")
+                    # Verify access by getting basic info
+                    _ = subreddit.display_name
+                    print(f"✓ Connected to r/{subreddit_name}")
                 except Exception as e:
-                    print(f"❌ Failed to access r/{subreddit_name}: {str(e)}")
+                    print(f"❌ Failed to connect to r/{subreddit_name}: {str(e)}")
                     continue
-
-                print(f"- Fetching posts (limit: {self.post_limit}, timeframe: {self.time_filter})...")
                 
-                # Collect posts with proper error handling
+                print(f"- Fetching posts (limit: {self.post_limit}, timeframe: {self.time_filter})...")
                 posts = []
+                
+                # Use proper listing endpoint with error handling
                 try:
                     for post in subreddit.top(time_filter=self.time_filter, limit=self.post_limit):
-                        try:
-                            posts.append({
-                                'subreddit': subreddit_name,
-                                'title': post.title,
-                                'text': post.selftext,
-                                'score': post.score,
-                                'comments': post.num_comments,
-                                'created_utc': post.created_utc,
-                                'id': post.id,
-                                'url': post.url
-                            })
-                        except Exception as post_e:
-                            print(f"- Error processing post: {str(post_e)}")
-                            continue
-                except Exception as fetch_e:
-                    print(f"❌ Error fetching posts: {str(fetch_e)}")
+                        posts.append({
+                            'subreddit': subreddit_name,
+                            'title': post.title,
+                            'text': post.selftext,
+                            'score': post.score,
+                            'comments': post.num_comments,
+                            'created_utc': post.created_utc,
+                            'id': post.id,
+                            'url': post.url
+                        })
+                        print(f"- Collected post: {post.id}")
+                except Exception as e:
+                    print(f"❌ Error fetching posts: {str(e)}")
                     continue
-
+                
                 print(f"✓ Collected {len(posts)} posts from r/{subreddit_name}")
                 all_posts.extend(posts)
                 
             except Exception as e:
-                print(f"\n❌ Error collecting data from r/{subreddit_name}:")
+                print(f"\n❌ Error processing r/{subreddit_name}:")
                 print(f"- Error type: {type(e).__name__}")
                 print(f"- Error message: {str(e)}")
                 continue
         
-        print(f"\nData collection summary:")
-        print(f"- Total posts collected: {len(all_posts)}")
-        print(f"- Subreddits processed: {len(self.subreddits)}")
-        
-        if not all_posts:
-            print("⚠️ Warning: No posts were collected!")
-            return pd.DataFrame()
-        
-        return pd.DataFrame(all_posts)
+        return pd.DataFrame(all_posts) if all_posts else pd.DataFrame()
 
     def test_authentication(self):
         """Test Reddit API authentication"""
