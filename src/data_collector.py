@@ -33,21 +33,27 @@ class RedditDataCollector:
             except Exception as e:
                 raise ValueError(f"Could not format user agent: {str(e)}")
 
-        # Initialize Reddit client with read-only mode and proper authentication
+        # Initialize Reddit client with script auth
         max_retries = 3
         for attempt in range(max_retries):
             try:
+                print(f"\nAttempt {attempt + 1} to initialize Reddit client:")
+                print(f"- Client ID: {config['client_id']}")
+                print(f"- User Agent: {config['user_agent']}")
+                
                 self.reddit = Reddit(
                     client_id=config['client_id'],
                     client_secret=config['client_secret'],
                     user_agent=config['user_agent'],
-                    username=config.get('redditUsername'),
-                    password=None,  # We're using script auth without password
-                    read_only=True  # Explicitly set read-only mode
+                    username=None,  # Remove username for client credentials flow
+                    password=None,
+                    read_only=True
                 )
                 
-                # Test authentication with a simple API call
-                self.reddit.auth.scopes()
+                # Test authentication with a public endpoint
+                print("Testing authentication...")
+                subreddit = self.reddit.subreddit('announcements')
+                _ = subreddit.display_name  # Simple test that doesn't require auth
                 print("✓ Reddit API authentication successful")
                 
                 # Store configuration
@@ -55,14 +61,31 @@ class RedditDataCollector:
                 self.subreddits = config.get('subreddits', [])
                 self.time_filter = config.get('timeframe', 'week')
                 self.post_limit = config.get('postLimit', 100)
-                break
+                
+                print("\nConfiguration loaded:")
+                print(f"- Subreddits: {self.subreddits}")
+                print(f"- Time filter: {self.time_filter}")
+                print(f"- Post limit: {self.post_limit}")
+                return
                 
             except Exception as e:
                 print(f"\n⚠️ Authentication attempt {attempt + 1} failed:")
-                print(f"- Error: {str(e)}")
+                print(f"- Error type: {type(e).__name__}")
+                print(f"- Error message: {str(e)}")
+                
+                if 'invalid_grant' in str(e):
+                    print("- Issue: Invalid credentials")
+                    print("- Solution: Verify your client_id and client_secret")
+                elif '401' in str(e):
+                    print("- Issue: Unauthorized access")
+                    print("- Solution: Check if your Reddit app is properly configured as 'script' type")
+                    print("- Note: Make sure you've created the app at https://www.reddit.com/prefs/apps")
+                
                 if attempt == max_retries - 1:
                     raise ValueError(f"Failed to initialize Reddit client after {max_retries} attempts")
-                time.sleep(2)  # Add delay between retries
+                
+                print("Retrying in 2 seconds...")
+                time.sleep(2)
 
     def collect_data(self):
         """Collect data from specified subreddits"""
