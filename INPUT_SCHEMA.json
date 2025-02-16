@@ -9,7 +9,7 @@
             "type": "string",
             "description": "Your Reddit API Client ID from https://www.reddit.com/prefs/apps",
             "editor": "textfield",
-            "minLength": 1
+            "pattern": ".+"
         },
         "clientSecret": {
             "title": "Reddit Client Secret",
@@ -17,15 +17,13 @@
             "description": "Your Reddit API Client Secret",
             "editor": "textfield",
             "isSecret": true,
-            "minLength": 1
+            "pattern": ".+"
         },
         "redditUsername": {
             "title": "Reddit Username",
             "type": "string",
             "description": "Your Reddit username (without /u/)",
             "pattern": "^[A-Za-z0-9_-]+$",
-            "minLength": 3,
-            "maxLength": 20,
             "editor": "textfield"
         },
         "appName": {
@@ -49,7 +47,12 @@
             "type": "array",
             "description": "List of subreddits to analyze",
             "prefill": ["wallstreetbets", "stocks", "investing"],
-            "editor": "stringList"
+            "editor": "stringList",
+            "uniqueItems": true,
+            "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]+$"
+            }
         },
         "timeframe": {
             "title": "Time Frame",
