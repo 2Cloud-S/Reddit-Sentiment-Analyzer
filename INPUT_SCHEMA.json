@@ -23,21 +23,24 @@
             "description": "Your Reddit username (without /u/)",
             "pattern": "^[A-Za-z0-9_-]+$",
             "minLength": 3,
-            "maxLength": 20
+            "maxLength": 20,
+            "editor": "textfield"
         },
         "appName": {
             "title": "App Name",
             "type": "string",
             "description": "Name of your Reddit app (alphanumeric, dashes, and underscores only)",
             "pattern": "^[A-Za-z0-9_-]+$",
-            "default": "RedditSentimentAnalyzer"
+            "default": "RedditSentimentAnalyzer",
+            "editor": "textfield"
         },
         "appVersion": {
             "title": "App Version",
             "type": "string",
             "description": "Version of your app (format: v1.0)",
             "pattern": "^v\\d+\\.\\d+$",
-            "default": "v1.0"
+            "default": "v1.0",
+            "editor": "textfield"
         },
         "subreddits": {
             "title": "Subreddits",
