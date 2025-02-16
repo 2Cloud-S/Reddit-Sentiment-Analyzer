@@ -49,10 +49,10 @@
             "type": "array",
             "description": "List of subreddits to analyze",
             "default": ["wallstreetbets", "stocks", "investing"],
-            "editor": "json",
-            "items": {
-                "type": "string"
-            }
+            "editor": "stringList",
+            "minItems": 1,
+            "maxItems": 10,
+            "uniqueItems": true
         },
         "timeframe": {
             "title": "Time Frame",
