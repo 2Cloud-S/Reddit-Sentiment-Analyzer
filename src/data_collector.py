@@ -5,9 +5,11 @@ import os
 from datetime import datetime, timedelta
 import re
 import time
-from prawcore import Requestor
+from prawcore import Requestor, Authorizer
 from prawcore.auth import ScriptAuthorizer, TrustedAuthenticator
-import base64
+import sys
+import platform
+import praw
 
 class RedditDataCollector:
     def __init__(self, config):
@@ -16,9 +18,13 @@ class RedditDataCollector:
         print("Environment Variables:")
         print(f"- NLTK_DATA: {os.getenv('NLTK_DATA')}")
         print(f"- APIFY_TOKEN exists: {bool(os.getenv('APIFY_TOKEN'))}")
+        print(f"- APIFY_DEFAULT_KEY_VALUE_STORE_ID exists: {bool(os.getenv('APIFY_DEFAULT_KEY_VALUE_STORE_ID'))}")
+        
+        # Add timestamp to logs
+        print(f"\nInitialization started at: {datetime.now().isoformat()}")
         
         # Validate required fields
-        required_fields = ['client_id', 'client_secret', 'user_agent', 'redditUsername']
+        required_fields = ['client_id', 'client_secret', 'user_agent']
         missing_fields = [field for field in required_fields if not config.get(field)]
         if missing_fields:
             raise ValueError(f"Missing required fields in config: {missing_fields}")
@@ -27,41 +33,76 @@ class RedditDataCollector:
         for attempt in range(max_retries):
             try:
                 print(f"\n=== Authentication Attempt {attempt + 1}/{max_retries} ===")
-                print("Client Configuration:")
-                print(f"- Client ID: {config['client_id']}")
+                print(f"Timestamp: {datetime.now().isoformat()}")
+                
+                # Before OAuth Flow
+                print("\n🔄 Pre-OAuth Flow Check:")
+                print("- Validating credentials format...")
+                print(f"- Client ID length: {len(config['client_id'])}")
+                print(f"- Client Secret length: {len(config['client_secret'])}")
                 print(f"- User Agent: {config['user_agent']}")
-                print(f"- Username: {config.get('redditUsername')}")
                 
-                # Create basic auth header
-                auth_string = f"{config['client_id']}:{config['client_secret']}"
-                auth_bytes = auth_string.encode('ascii')
-                auth_header = base64.b64encode(auth_bytes).decode('ascii')
+                # Before Authentication Request
+                print("\n📡 Pre-Authentication Request:")
+                print("- Preparing HTTP headers...")
+                headers = {
+                    'User-Agent': config['user_agent'],
+                    'Accept': 'application/json'
+                }
+                print("- Headers prepared:", headers)
                 
-                # Set up the requestor with proper headers
-                requestor = Requestor(
-                    config['user_agent'],
-                    timeout=30,
-                    auth_header=auth_header
-                )
+                # Set up the authenticator with proper OAuth2 flow
+                requestor = Requestor(config['user_agent'], timeout=30)
                 
-                print("\nInitializing OAuth2 Flow:")
-                print("1. Creating Requestor with auth headers...")
+                # Debug HTTP requests with detailed logging
+                def log_request(request):
+                    timestamp = datetime.now().isoformat()
+                    print(f"\n🌐 Outgoing Request at {timestamp}:")
+                    print(f"- Method: {request.method}")
+                    print(f"- URL: {request.url}")
+                    print(f"- Headers: {dict(request.headers)}")
+                    if request.body:
+                        print(f"- Body Length: {len(request.body)} bytes")
+                    return request
+
+                def log_response(response):
+                    timestamp = datetime.now().isoformat()
+                    print(f"\n📥 Response Received at {timestamp}:")
+                    print(f"- Status Code: {response.status_code}")
+                    print(f"- Headers: {dict(response.headers)}")
+                    print(f"- Content Length: {len(response.content)} bytes")
+                    try:
+                        json_response = response.json()
+                        print("- Response Type: JSON")
+                        if 'error' in json_response:
+                            print(f"- Error: {json_response['error']}")
+                    except:
+                        print("- Response Type: Non-JSON")
+                    return response
+
+                requestor._http.hooks['request'] = [log_request]
+                requestor._http.hooks['response'] = [log_response]
                 
-                # Initialize Reddit instance with script auth
+                # Initialize Reddit instance
+                print("\n🔐 Creating Reddit Instance:")
+                print(f"Timestamp: {datetime.now().isoformat()}")
                 self.reddit = Reddit(
                     client_id=config['client_id'],
                     client_secret=config['client_secret'],
                     user_agent=config['user_agent'],
-                    username=config['redditUsername'],
-                    password=config.get('password'),  # Optional, only if using password auth
-                    auth_type='script'
+                    requestor=requestor._http,
+                    check_for_updates=False
                 )
                 
-                print("\nTesting Authentication:")
+                # Test Authentication
+                print("\n🔍 Testing Authentication:")
                 try:
-                    print("- Verifying credentials...")
-                    me = self.reddit.user.me()
-                    print(f"✓ Authenticated as: {me.name}")
+                    print("- Attempting to fetch test data...")
+                    subreddit = self.reddit.subreddit('announcements')
+                    test_post = next(subreddit.hot(limit=1))
+                    print("✅ Authentication test successful")
+                    print(f"- Test post ID: {test_post.id}")
+                    print(f"- Test post title: {test_post.title[:50]}...")
                     
                     # Store configuration
                     self.config = config
@@ -69,37 +110,41 @@ class RedditDataCollector:
                     self.time_filter = config.get('timeframe', 'week')
                     self.post_limit = config.get('postLimit', 100)
                     
-                    print("\nFinal Configuration:")
+                    print("\n✨ Final Configuration:")
                     print(f"- Subreddits: {self.subreddits}")
                     print(f"- Time Filter: {self.time_filter}")
                     print(f"- Post Limit: {self.post_limit}")
+                    print(f"- Setup completed at: {datetime.now().isoformat()}")
                     return
                     
                 except Exception as e:
-                    print(f"\n⚠️ Authentication Test Failed:")
+                    print(f"\n⚠️ Authentication Test Failed at {datetime.now().isoformat()}:")
                     print(f"- Error Type: {type(e).__name__}")
                     print(f"- Error Message: {str(e)}")
                     if hasattr(e, 'response'):
+                        print("\n🔍 API Response Details:")
                         print(f"- Status Code: {e.response.status_code}")
-                        print(f"- Response Headers: {e.response.headers}")
-                        print(f"- Response Body: {e.response.text}")
+                        print(f"- Response Headers: {dict(e.response.headers)}")
+                        print(f"- Response Body: {e.response.text[:500]}...")
                     raise
                 
             except Exception as e:
-                print(f"\n⚠️ Authentication attempt {attempt + 1} failed:")
-                print(f"- Error type: {type(e).__name__}")
-                print(f"- Error message: {str(e)}")
+                print(f"\n❌ Authentication Attempt {attempt + 1} Failed:")
+                print(f"Timestamp: {datetime.now().isoformat()}")
+                print(f"- Error Type: {type(e).__name__}")
+                print(f"- Error Message: {str(e)}")
+                print("\n🔍 Debug Information:")
+                print(f"- Python Version: {sys.version}")
+                print(f"- PRAW Version: {praw.__version__}")
+                print(f"- Operating System: {platform.system()} {platform.release()}")
                 
                 if attempt == max_retries - 1:
-                    print("\n❌ All authentication attempts failed!")
-                    print("Please verify:")
-                    print("1. Your Reddit app is configured as a 'script' type app")
-                    print("2. Client ID and Client Secret are correct")
-                    print("3. Username matches the account that created the app")
-                    print("4. App has proper permissions (read)")
+                    print("\n❌ All Authentication Attempts Failed")
+                    print(f"Final Failure at: {datetime.now().isoformat()}")
                     raise ValueError(f"Failed to initialize Reddit client after {max_retries} attempts")
                 
-                print("Retrying in 2 seconds...")
+                print(f"\n⏳ Waiting for retry...")
+                print(f"Next attempt in 2 seconds at: {(datetime.now() + timedelta(seconds=2)).isoformat()}")
                 time.sleep(2)
 
     def collect_data(self):

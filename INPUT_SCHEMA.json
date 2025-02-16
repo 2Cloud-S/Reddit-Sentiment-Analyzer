@@ -7,52 +7,44 @@
         "clientId": {
             "title": "Reddit Client ID",
             "type": "string",
-            "description": "Your Reddit API Client ID",
+            "description": "Your Reddit API Client ID from https://www.reddit.com/prefs/apps",
             "editor": "textfield"
         },
         "clientSecret": {
             "title": "Reddit Client Secret",
             "type": "string",
             "description": "Your Reddit API Client Secret",
-            "isSecret": true,
-            "editor": "textfield"
+            "editor": "textfield",
+            "isSecret": true
         },
         "redditUsername": {
             "title": "Reddit Username",
             "type": "string",
-            "description": "Username of the Reddit account that created the app",
-            "editor": "textfield"
-        },
-        "userAgent": {
-            "title": "User Agent",
-            "type": "string",
-            "description": "Custom user agent string for Reddit API (e.g., 'script:MyApp:v1.0 (by /u/username)')",
-            "default": "script:RedditSentimentAnalyzer:v1.0",
+            "description": "Your Reddit username (without /u/)",
+            "pattern": "^[A-Za-z0-9_-]+$",
             "editor": "textfield"
         },
         "appName": {
-            "title": "Application Name",
+            "title": "App Name",
             "type": "string",
-            "description": "Name of your Reddit application",
+            "description": "Name of your Reddit app (alphanumeric, dashes, and underscores only)",
+            "pattern": "^[A-Za-z0-9_-]+$",
             "default": "RedditSentimentAnalyzer",
             "editor": "textfield"
         },
         "appVersion": {
-            "title": "Application Version",
+            "title": "App Version",
             "type": "string",
-            "description": "Version of your application",
+            "description": "Version of your app (format: v1.0)",
+            "pattern": "^v\\d+\\.\\d+$",
             "default": "v1.0",
             "editor": "textfield"
         },
         "subreddits": {
             "title": "Subreddits",
             "type": "array",
-            "description": "List of subreddits to analyze",
-            "items": {
-                "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9_]{2,20}$"
-            },
-            "default": ["wallstreetbets", "stocks", "investing"],
+            "description": "List of subreddits to analyze (e.g., wallstreetbets, stocks, investing)",
+            "prefill": ["wallstreetbets", "stocks", "investing"],
             "editor": "stringList",
             "uniqueItems": true
         },
@@ -72,21 +64,6 @@
             "maximum": 1000,
             "default": 100,
             "editor": "number"
-        },
-        "outputFormat": {
-            "title": "Output Format",
-            "type": "string",
-            "description": "Format of the analysis output",
-            "enum": ["json", "csv", "both"],
-            "default": "json",
-            "editor": "select"
-        },
-        "includeComments": {
-            "title": "Include Comments",
-            "type": "boolean",
-            "description": "Whether to analyze post comments",
-            "default": true,
-            "editor": "checkbox"
         }
     },
     "required": ["clientId", "clientSecret", "redditUsername"]
