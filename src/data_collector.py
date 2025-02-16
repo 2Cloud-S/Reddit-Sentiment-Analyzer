@@ -20,16 +20,40 @@ class RedditDataCollector:
         else:
             raise TypeError("config must be either a dictionary or a path to a config file")
         
+        # Get credentials from environment
+        self.client_id = os.environ.get('REDDIT_CLIENT_ID')
+        self.client_secret = os.environ.get('REDDIT_CLIENT_SECRET')
+        self.user_agent = os.environ.get('REDDIT_USER_AGENT')
+        
+        # Validate credentials
+        if not all([self.client_id, self.client_secret, self.user_agent]):
+            raise ValueError("Missing Reddit API credentials in environment variables")
+        
         # Validate user agent format
-        user_agent = os.environ.get('REDDIT_USER_AGENT')
-        if not user_agent or not re.match(r'^[a-zA-Z]+:[a-zA-Z0-9_-]+:v\d+\.\d+\s+\(by\s+/u/[a-zA-Z0-9_-]+\)$', user_agent):
+        if not re.match(r'^script:[a-zA-Z0-9_-]+:v\d+\.\d+\s+\(by\s+/u/[a-zA-Z0-9_-]+\)$', self.user_agent):
             raise ValueError(
-                "Invalid user agent format. Must be: '<platform>:<app ID>:<version string> (by /u/<reddit username>)'\n"
+                f"Invalid user agent format: {self.user_agent}\n"
+                "Must be: 'script:<app ID>:v<version> (by /u/<reddit username>)'\n"
                 "Example: 'script:RedditSentimentAnalyzer:v1.0 (by /u/your_username)'"
             )
         
-        print(f"\nUser Agent Validation:")
-        print(f"✓ Format: {user_agent}")
+        print("\nReddit API Configuration:")
+        print(f"✓ User Agent: {self.user_agent}")
+        print(f"✓ Client ID: {'*' * len(self.client_id)}")
+        print(f"✓ Client Secret: {'*' * 8}")
+        
+        # Initialize Reddit client
+        try:
+            self.reddit = Reddit(
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                user_agent=self.user_agent
+            )
+            # Verify credentials
+            self.reddit.user.me()
+            print("✓ Reddit API authentication successful")
+        except Exception as e:
+            raise ValueError(f"Reddit API authentication failed: {str(e)}")
         
         # Extract configuration
         self.subreddits = self.config.get('subreddits', [])
@@ -40,48 +64,6 @@ class RedditDataCollector:
         print(f"- Subreddits: {self.subreddits}")
         print(f"- Time filter: {self.time_filter}")
         print(f"- Post limit: {self.post_limit}")
-        
-        # Initialize Reddit client with detailed logging
-        try:
-            client_id = os.environ.get('REDDIT_CLIENT_ID')
-            client_secret = os.environ.get('REDDIT_CLIENT_SECRET')
-            
-            print("\nReddit API Credentials Check:")
-            print(f"- Client ID: {'✓ Present' if client_id else '✗ Missing'} (Length: {len(client_id) if client_id else 0})")
-            print(f"- Client Secret: {'✓ Present' if client_secret else '✗ Missing'} (Length: {len(client_secret) if client_secret else 0})")
-            print(f"- User Agent: {user_agent}")
-            
-            print("\nInitializing Reddit client...")
-            self.reddit = Reddit(
-                client_id=client_id,
-                client_secret=client_secret,
-                user_agent=user_agent
-            )
-            print("Reddit client instance created")
-            
-            # Verify credentials
-            print("\nVerifying Reddit API credentials...")
-            test_subreddit = self.reddit.subreddit('test')
-            test_subreddit.display_name
-            print("✓ Credentials verified successfully")
-            
-            # Add authentication test
-            if not self.test_authentication():
-                raise ValueError("Reddit API authentication failed")
-            
-        except Exception as e:
-            print("\n❌ Reddit API Authentication Error:")
-            if '401' in str(e):
-                print("- Status: 401 Unauthorized")
-                print("- Cause: Invalid credentials")
-                print("- Solution: Double-check your Client ID and Client Secret")
-            elif '403' in str(e):
-                print("- Status: 403 Forbidden")
-                print("- Cause: Insufficient permissions")
-                print("- Solution: Ensure your Reddit API application has the correct scope")
-            else:
-                print(f"- Unexpected error: {str(e)}")
-            raise
 
     def collect_data(self):
         """Collect data from specified subreddits"""

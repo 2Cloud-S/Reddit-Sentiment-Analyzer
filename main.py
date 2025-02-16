@@ -29,38 +29,32 @@ def verify_nltk_setup():
         return False
 
 def main():
-    # Add near the start of main()
-    if not verify_nltk_setup():
-        raise RuntimeError("NLTK setup verification failed")
-    
     # Initialize the Apify client
     client = ApifyClient(os.environ['APIFY_TOKEN'])
     
     try:
-        # Get input
-        print("Debug - Default KVS ID:", os.environ['APIFY_DEFAULT_KEY_VALUE_STORE_ID'])
-        print("Debug - Default store initialized")
-        
         # Get input from Apify
         default_store = client.key_value_store(os.environ['APIFY_DEFAULT_KEY_VALUE_STORE_ID'])
         input_record = default_store.get_record('INPUT')
-        print("Debug - Raw input record:", input_record)
-        
-        input_data = input_record['value'] if input_record else {}
-        print("Debug - Parsed input data:", {
-            **input_data,
-            'clientSecret': '[HIDDEN]' if 'clientSecret' in input_data else None
+        print("Debug - Raw input record:", {
+            **input_record.get('value', {}),
+            'clientSecret': '[HIDDEN]' if 'clientSecret' in input_record.get('value', {}) else None
         })
         
+        input_data = input_record.get('value', {}) if input_record else {}
+        
         # Construct user agent from components
-        reddit_username = input_data.get('redditUsername', '')
+        reddit_username = input_data.get('redditUsername')
         app_name = input_data.get('appName', 'RedditSentimentAnalyzer')
         app_version = input_data.get('appVersion', 'v1.0')
+        
+        if not reddit_username:
+            raise ValueError("Reddit username is required in the input")
         
         user_agent = f"script:{app_name}:{app_version} (by /u/{reddit_username})"
         print(f"Constructed user agent: {user_agent}")
         
-        # Set Reddit credentials in environment variables
+        # Set Reddit credentials once
         os.environ['REDDIT_CLIENT_ID'] = str(input_data.get('clientId'))
         os.environ['REDDIT_CLIENT_SECRET'] = str(input_data.get('clientSecret'))
         os.environ['REDDIT_USER_AGENT'] = user_agent
@@ -72,6 +66,10 @@ def main():
             'post_limit': input_data.get('postLimit', 100)
         }
         
+        # Remove duplicate credential validation
+        if not verify_nltk_setup():
+            raise RuntimeError("NLTK setup verification failed")
+            
         # Initialize components
         collector = RedditDataCollector(config)
         analyzer = SentimentAnalyzer()
