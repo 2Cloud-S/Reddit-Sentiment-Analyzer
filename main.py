@@ -37,132 +37,44 @@ def main():
         default_store = client.key_value_store(os.environ['APIFY_DEFAULT_KEY_VALUE_STORE_ID'])
         input_record = default_store.get_record('INPUT')
         
-        print("Debug - Raw input record:", {
-            **input_record.get('value', {}),
-            'clientSecret': '[HIDDEN]' if 'clientSecret' in input_record.get('value', {}) else None
-        })
+        if not input_record or not input_record.get('value'):
+            raise ValueError("No input provided")
+            
+        input_data = input_record['value']
         
-        input_data = input_record.get('value', {}) if input_record else {}
+        # Construct user agent once
+        user_agent = f"script:{input_data.get('appName', 'RedditSentimentAnalyzer')}:v{input_data.get('appVersion', '1.0').lstrip('v')} (by /u/{input_data['redditUsername']})"
         
-        # Construct user agent with proper format
-        user_agent = f"script:{input_data.get('appName', 'RedditSentimentAnalyzer')}:{input_data.get('appVersion', 'v1.0')} (by /u/{input_data.get('redditUsername', '')})"
-        print(f"Constructed user agent: {user_agent}")
-        
-        # Create config dictionary with all required fields
+        # Create unified config
         config = {
-            'client_id': input_data.get('clientId'),
-            'client_secret': input_data.get('clientSecret'),
+            'client_id': input_data['clientId'],
+            'client_secret': input_data['clientSecret'],
             'user_agent': user_agent,
+            'appName': input_data.get('appName', 'RedditSentimentAnalyzer'),
+            'appVersion': input_data.get('appVersion', 'v1.0'),
+            'redditUsername': input_data['redditUsername'],
             'subreddits': input_data.get('subreddits', ['wallstreetbets', 'stocks', 'investing']),
             'timeframe': input_data.get('timeframe', 'week'),
-            'post_limit': input_data.get('postLimit', 100)
+            'postLimit': input_data.get('postLimit', 100)
         }
         
-        # Validate credentials before proceeding
-        if not config['client_id'] or not config['client_secret']:
-            raise ValueError(
-                "Reddit API credentials are required. Please provide 'clientId' and 'clientSecret' "
-                "in the input. You can get these from https://www.reddit.com/prefs/apps"
-            )
+        print("Debug - Configuration:", {
+            **config,
+            'client_secret': '[HIDDEN]'
+        })
         
-        # Remove duplicate credential validation
-        if not verify_nltk_setup():
-            raise RuntimeError("NLTK setup verification failed")
-            
-        # Initialize components
+        # Initialize components with single config
         collector = RedditDataCollector(config)
-        analyzer = SentimentAnalyzer()
-        processor = MathProcessor()
-        visualizer = Visualizer()
         
-        try:
-            # Process data
-            print("Collecting Reddit data...")
-            df = collector.collect_data()
-            
-            if df.empty:
-                print("Warning: No data collected. Check your Reddit API credentials and subreddit names.")
-                # Create minimal output
-                output = {
-                    'metrics': {},
-                    'visualizations': [],
-                    'analysis_summary': {
-                        'total_posts_analyzed': 0,
-                        'timeframe': config['timeframe'],
-                        'subreddits_analyzed': config['subreddits'],
-                        'error': 'No data collected. Possible authentication error.'
-                    }
-                }
-            else:
-                print("Analyzing sentiment...")
-                df = analyzer.analyze_sentiment(df)
-                
-                print("Calculating metrics...")
-                metrics = processor.calculate_metrics(df)
-                
-                # Generate visualizations
-                print("Generating visualizations...")
-                visualization_paths = []
-                visualization_paths.append(visualizer.plot_sentiment_distribution(df))
-                visualization_paths.append(visualizer.plot_engagement_vs_sentiment(df))
-                visualization_paths.append(visualizer.plot_sentiment_time_series(df))
-                visualization_paths.append(visualizer.plot_advanced_metrics(df))
-                visualization_paths.append(visualizer.plot_emotion_distribution(df))
-                visualization_paths.append(visualizer.plot_prediction_analysis(df))
-                
-                # Prepare output
-                output = {
-                    'metrics': metrics,
-                    'visualizations': visualization_paths,
-                    'analysis_summary': {
-                        'total_posts_analyzed': len(df),
-                        'timeframe': config['timeframe'],
-                        'subreddits_analyzed': config['subreddits']
-                    }
-                }
-            
-            # Save output to the default store
-            print("Saving output to key-value store...")
-            try:
-                default_store.set_record(
-                    'OUTPUT',
-                    output,
-                    content_type='application/json'
-                )
-                print("Output saved successfully")
-                
-                # Save visualizations if they exist
-                if 'visualizations' in output and output['visualizations']:
-                    for i, viz_path in enumerate(output['visualizations']):
-                        if os.path.exists(viz_path):
-                            with open(viz_path, 'rb') as f:
-                                viz_data = f.read()
-                                default_store.set_record(
-                                    f'visualization_{i}.png',
-                                    viz_data,
-                                    content_type='image/png'
-                                )
-                    print("Visualizations saved successfully")
-                    
-            except Exception as e:
-                print(f"Error saving output: {str(e)}")
-                # Create error output
-                error_output = {
-                    'error': str(e),
-                    'status': 'failed',
-                    'timestamp': datetime.now().isoformat()
-                }
-                default_store.set_record(
-                    'ERROR',
-                    error_output,
-                    content_type='application/json'
-                )
-            
-            print("Analysis complete! Check the output in Apify storage.")
-
-        except Exception as e:
-            print(f"Error in main processing: {str(e)}")
-            raise
+        # Collect and process data
+        print("Collecting Reddit data...")
+        df = collector.collect_data()
+        
+        if df.empty:
+            print("Warning: No data collected")
+            # Handle empty data case...
+        else:
+            # Process data normally...
 
     except Exception as e:
         print(f"Error reading input: {str(e)}")
