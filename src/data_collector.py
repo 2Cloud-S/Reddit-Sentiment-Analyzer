@@ -11,195 +11,164 @@ import base64
 import sys
 import platform
 import praw
+import logging
+import requests
+from prawcore.exceptions import ResponseException, RequestException, RateLimitExceeded, OAuthException
 
 class RedditDataCollector:
     def __init__(self, config):
         """Initialize with configuration dictionary"""
-        print("\n=== Reddit Client Initialization ===")
-        print("Environment Variables:")
-        print(f"- NLTK_DATA: {os.getenv('NLTK_DATA')}")
-        print(f"- APIFY_TOKEN exists: {bool(os.getenv('APIFY_TOKEN'))}")
-        print(f"- APIFY_DEFAULT_KEY_VALUE_STORE_ID exists: {bool(os.getenv('APIFY_DEFAULT_KEY_VALUE_STORE_ID'))}")
+        # Set up logging
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(asctime)s [%(levelname)s] %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        self.logger = logging.getLogger('RedditDataCollector')
         
-        # Add timestamp to logs
-        print(f"\nInitialization started at: {datetime.now().isoformat()}")
+        # Store config
+        self.config = config
+        self.max_retries = 3
+        self.retry_delay = 5
         
-        # Validate required fields
-        required_fields = ['client_id', 'client_secret', 'user_agent']
-        missing_fields = [field for field in required_fields if not config.get(field)]
-        if missing_fields:
-            raise ValueError(f"Missing required fields in config: {missing_fields}")
-
-        max_retries = 3
-        for attempt in range(max_retries):
+        # Initialize Reddit instance with retry logic
+        self._initialize_reddit_client()
+        
+    def _initialize_reddit_client(self):
+        """Initialize Reddit client with retry logic and validation"""
+        self.logger.info("\n=== Reddit Client Initialization ===")
+        
+        # Log environment and network info
+        self._log_environment_info()
+        
+        for attempt in range(self.max_retries):
             try:
-                print(f"\n=== Authentication Attempt {attempt + 1}/{max_retries} ===")
-                print(f"Timestamp: {datetime.now().isoformat()}")
-                
-                # Before OAuth Flow
-                print("\n🔄 Pre-OAuth Flow Check:")
-                print("- Validating credentials format...")
-                print(f"- Client ID length: {len(config['client_id'])}")
-                print(f"- Client Secret length: {len(config['client_secret'])}")
-                print(f"- User Agent: {config['user_agent']}")
-                
-                # Create Basic Auth header
-                auth_string = f"{config['client_id']}:{config['client_secret']}"
-                auth_bytes = auth_string.encode('ascii')
-                auth_b64 = base64.b64encode(auth_bytes).decode('ascii')
-                
-                print("\n📡 Pre-Authentication Request:")
-                print("- Preparing HTTP headers...")
-                headers = {
-                    'User-Agent': config['user_agent'],
-                    'Authorization': f'Basic {auth_b64}',
-                    'Accept': 'application/json'
-                }
-                print("- Headers prepared (Authorization header hidden)")
-                
-                # Initialize Reddit instance with password flow
-                print("\n🔐 Creating Reddit Instance:")
                 self.reddit = Reddit(
-                    client_id=config['client_id'],
-                    client_secret=config['client_secret'],
-                    user_agent=config['user_agent'],
-                    username=config.get('redditUsername'),
-                    password=config.get('redditPassword'),  # Make sure this is provided in config
+                    client_id=self.config['client_id'],
+                    client_secret=self.config['client_secret'],
+                    user_agent=self.config['user_agent'],
+                    username=self.config.get('redditUsername'),
+                    password=self.config.get('redditPassword'),
                     check_for_updates=False
                 )
                 
-                print("\n🔍 Testing Authentication:")
-                try:
-                    print("- Attempting to fetch test data...")
-                    # Test with read-only operation first
-                    self.reddit.read_only = True
-                    subreddit = self.reddit.subreddit('announcements')
-                    test_post = next(subreddit.hot(limit=1))
-                    print("✅ Authentication test successful")
-                    print(f"- Test post ID: {test_post.id}")
-                    
-                    # Store configuration
-                    self.config = config
-                    self.subreddits = config.get('subreddits', [])
-                    self.time_filter = config.get('timeframe', 'week')
-                    self.post_limit = config.get('postLimit', 100)
-                    
-                    print("\n✨ Final Configuration:")
-                    print(f"- Subreddits: {self.subreddits}")
-                    print(f"- Time Filter: {self.time_filter}")
-                    print(f"- Post Limit: {self.post_limit}")
-                    print(f"- Setup completed at: {datetime.now().isoformat()}")
-                    return
-                    
-                except Exception as e:
-                    print(f"\n⚠️ Authentication Test Failed:")
-                    print(f"- Error Type: {type(e).__name__}")
-                    print(f"- Error Message: {str(e)}")
-                    if hasattr(e, 'response'):
-                        print("\n🔍 API Response Details:")
-                        print(f"- Status Code: {e.response.status_code}")
-                        print(f"- Response Headers: {dict(e.response.headers)}")
+                # Validate authentication
+                self._validate_authentication()
+                self.logger.info("✅ Reddit client initialized successfully")
+                break
+                
+            except OAuthException as e:
+                self.logger.error(f"Authentication error (attempt {attempt + 1}/{self.max_retries}): {e}")
+                if attempt == self.max_retries - 1:
                     raise
+                time.sleep(self.retry_delay)
                 
             except Exception as e:
-                print(f"\n❌ Authentication Attempt {attempt + 1} Failed:")
-                print(f"Timestamp: {datetime.now().isoformat()}")
-                print(f"- Error Type: {type(e).__name__}")
-                print(f"- Error Message: {str(e)}")
-                print("\n🔍 Debug Information:")
-                print(f"- Python Version: {sys.version}")
-                print(f"- PRAW Version: {praw.__version__}")
-                print(f"- Operating System: {platform.system()} {platform.release()}")
-                
-                if attempt == max_retries - 1:
-                    print("\n❌ All Authentication Attempts Failed")
-                    print(f"Final Failure at: {datetime.now().isoformat()}")
-                    raise ValueError(f"Failed to initialize Reddit client after {max_retries} attempts")
-                
-                print(f"\n⏳ Waiting for retry...")
-                print(f"Next attempt in 2 seconds at: {(datetime.now() + timedelta(seconds=2)).isoformat()}")
-                time.sleep(2)
+                self.logger.error(f"Initialization error (attempt {attempt + 1}/{self.max_retries}): {e}")
+                if attempt == self.max_retries - 1:
+                    raise
+                time.sleep(self.retry_delay)
+
+    def _log_environment_info(self):
+        """Log environment and network information"""
+        try:
+            # Test network connectivity
+            ip_response = requests.get('https://api.ipify.org?format=json', timeout=5)
+            self.logger.info(f"🌐 Container IP: {ip_response.json()['ip']}")
+            
+            # Test Reddit API accessibility
+            reddit_response = requests.get('https://www.reddit.com/api/v1/access_token',
+                                         headers={'User-Agent': self.config['user_agent']},
+                                         timeout=5)
+            self.logger.info(f"📡 Reddit API Status: {reddit_response.status_code}")
+            self.logger.info(f"🔑 Reddit API Headers: {dict(reddit_response.headers)}")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ Network diagnostics failed: {e}")
+
+    def _validate_authentication(self):
+        """Validate Reddit API authentication"""
+        try:
+            # Test with read-only operation
+            test_subreddit = self.reddit.subreddit('announcements')
+            next(test_subreddit.hot(limit=1))
+            self.logger.info("✅ Authentication validated successfully")
+            
+        except Exception as e:
+            self.logger.error("❌ Authentication validation failed")
+            if hasattr(e, 'response'):
+                self.logger.error(f"Response Status: {e.response.status_code}")
+                self.logger.error(f"Response Headers: {dict(e.response.headers)}")
+            raise
 
     def collect_data(self):
-        """Collect data from specified subreddits"""
-        print("\n=== Starting Data Collection ===")
-        all_posts = []
-        
-        for subreddit_name in self.subreddits:
-            print(f"\nProcessing r/{subreddit_name}:")
-            try:
-                print("1. Verifying Authentication:")
-                print("- Checking token validity...")
-                if hasattr(self.reddit.auth, 'access_token'):
-                    print(f"- Access Token: {self.reddit.auth.access_token[:10]}...")
+        """Collect data with enhanced error handling and rate limiting"""
+        try:
+            all_posts = []
+            for subreddit_name in self.config['subreddits']:
+                self.logger.info(f"\n📥 Collecting data from r/{subreddit_name}")
                 
-                print("\n2. Initializing Subreddit:")
-                subreddit = self.reddit.subreddit(subreddit_name)
-                print(f"- Subreddit object created: {subreddit}")
-                
-                print("\n3. Fetching Posts:")
-                print(f"- Time Filter: {self.time_filter}")
-                print(f"- Post Limit: {self.post_limit}")
-                
-                posts = []
-                for post in subreddit.top(time_filter=self.time_filter, limit=self.post_limit):
-                    print(f"\nProcessing Post {len(posts) + 1}/{self.post_limit}:")
-                    print(f"- ID: {post.id}")
-                    print(f"- Title: {post.title[:50]}...")
+                try:
+                    subreddit = self.reddit.subreddit(subreddit_name)
+                    posts = self._collect_subreddit_posts(subreddit)
+                    all_posts.extend(posts)
                     
-                    posts.append({
-                        'subreddit': subreddit_name,
-                        'title': post.title,
-                        'selftext': post.selftext,
-                        'score': post.score,
-                        'num_comments': post.num_comments,
-                        'created_utc': post.created_utc,
-                        'id': post.id,
-                        'url': post.url,
-                        'author': str(post.author),
-                        'upvote_ratio': post.upvote_ratio
-                    })
+                except RateLimitExceeded as e:
+                    self.logger.warning(f"⚠️ Rate limit exceeded for r/{subreddit_name}: {e}")
+                    time.sleep(int(e.response.headers.get('x-ratelimit-reset', 60)))
+                    continue
                     
-                print(f"\n✓ Successfully collected {len(posts)} posts from r/{subreddit_name}")
-                all_posts.extend(posts)
+                except Exception as e:
+                    self.logger.error(f"❌ Error collecting from r/{subreddit_name}: {e}")
+                    continue
+            
+            return pd.DataFrame(all_posts)
+            
+        except Exception as e:
+            self.logger.error(f"❌ Data collection failed: {e}")
+            return pd.DataFrame()
+
+    def _collect_subreddit_posts(self, subreddit):
+        """Collect posts from a subreddit with rate limiting"""
+        posts = []
+        timeframe = self.config['timeframe']
+        limit = self.config['postLimit']
+        
+        try:
+            if timeframe == 'all':
+                submissions = subreddit.top(limit=limit)
+            else:
+                submissions = subreddit.top(time_filter=timeframe, limit=limit)
+            
+            for submission in submissions:
+                posts.append(self._process_submission(submission))
+                time.sleep(0.5)  # Rate limiting
                 
-            except Exception as e:
-                print(f"\n❌ Error processing r/{subreddit_name}:")
-                print(f"- Error Type: {type(e).__name__}")
-                print(f"- Error Message: {str(e)}")
-                if hasattr(e, 'response'):
-                    print("HTTP Response Details:")
-                    print(f"- Status Code: {e.response.status_code}")
-                    print(f"- Headers: {e.response.headers}")
-                    print(f"- Body: {e.response.text}")
-                continue
-        
-        print("\n=== Data Collection Summary ===")
-        print(f"- Total Posts Collected: {len(all_posts)}")
-        print(f"- Subreddits Processed: {len(self.subreddits)}")
-        
-        return pd.DataFrame(all_posts) if all_posts else pd.DataFrame()
+        except Exception as e:
+            self.logger.error(f"Error in subreddit collection: {e}")
+            
+        return posts
 
     def test_authentication(self):
         """Test Reddit API authentication"""
         try:
-            print("\nTesting Reddit API authentication...")
+            self.logger.info("\nTesting Reddit API authentication...")
             # Try to access user identity
             user = self.reddit.user.me()
             if user is None:
-                print("⚠️ Warning: Authenticated but couldn't get user details")
+                self.logger.warning("⚠️ Warning: Authenticated but couldn't get user details")
                 return True
-            print(f"✓ Successfully authenticated as: {user.name}")
+            self.logger.info(f"✓ Successfully authenticated as: {user.name}")
             return True
         except Exception as e:
-            print("\n❌ Authentication test failed:")
-            print(f"- Error type: {type(e).__name__}")
-            print(f"- Error message: {str(e)}")
+            self.logger.error("\n❌ Authentication test failed:")
+            self.logger.error(f"- Error type: {type(e).__name__}")
+            self.logger.error(f"- Error message: {str(e)}")
             if '401' in str(e):
-                print("- Issue: Invalid credentials or incorrect format")
-                print("- Solution: Verify your client_id and client_secret")
-                print("- Note: Make sure you're using a 'script' type app")
+                self.logger.error("- Issue: Invalid credentials or incorrect format")
+                self.logger.error("- Solution: Verify your client_id and client_secret")
+                self.logger.error("- Note: Make sure you're using a 'script' type app")
             elif '403' in str(e):
-                print("- Issue: Insufficient permissions")
-                print("- Solution: Check app permissions and user agent format")
+                self.logger.error("- Issue: Insufficient permissions")
+                self.logger.error("- Solution: Check app permissions and user agent format")
             return False

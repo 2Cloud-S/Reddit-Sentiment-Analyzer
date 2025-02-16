@@ -5,6 +5,9 @@ FROM python:3.12-slim as builder
 RUN apt-get update && apt-get install -y \
     build-essential \
     git \
+    curl \
+    iputils-ping \
+    net-tools \
     && rm -rf /var/lib/apt/lists/*
 
 # Create and activate virtual environment
@@ -56,16 +59,28 @@ WORKDIR /usr/src/app
 # Copy source code and configuration files
 COPY . .
 
-# Verify final setup
+# Add logging configuration
+ENV PYTHONUNBUFFERED=1
+
+# Add this before the final verification
+RUN echo "Testing network connectivity..." && \
+    ping -c 1 reddit.com || echo "Ping failed" && \
+    curl -I https://www.reddit.com || echo "Curl failed" && \
+    netstat -tulpn || echo "Netstat failed"
+
+# Update the verification script
 RUN python -c "import nltk; \
     import os; \
+    import logging; \
+    logging.basicConfig(level=logging.DEBUG); \
+    logger = logging.getLogger('Verification'); \
+    logger.info('Starting verification...'); \
     nltk.data.path.append('$NLTK_DATA'); \
-    print('Final NLTK data verification:'); \
-    print('- NLTK data path:', nltk.data.path); \
-    print('- VADER lexicon exists:', os.path.exists(os.path.join('$NLTK_DATA', 'sentiment/vader_lexicon.zip'))); \
+    logger.info('NLTK data path: %s', nltk.data.path); \
+    logger.info('VADER lexicon exists: %s', os.path.exists(os.path.join('$NLTK_DATA', 'sentiment/vader_lexicon.zip'))); \
     from nltk.sentiment.vader import SentimentIntensityAnalyzer; \
     sia = SentimentIntensityAnalyzer(); \
-    print('VADER analyzer initialized successfully')"
+    logger.info('VADER analyzer initialized successfully')"
 
 # Run the actor
 CMD ["python", "main.py"] 
