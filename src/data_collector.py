@@ -2,9 +2,10 @@ from praw import Reddit
 from prawcore.exceptions import (
     ResponseException,
     RequestException,
-    OAuthException
+    OAuthException,
+    RateLimitExceeded
 )
-from praw.exceptions import RedditAPIException, RateLimitExceeded
+from praw.exceptions import RedditAPIException
 import pandas as pd
 import yaml
 import os
@@ -37,18 +38,29 @@ class RedditDataCollector:
         """Initialize Reddit client with retry logic and validation"""
         self.logger.info("\n=== Reddit Client Initialization ===")
         
+        # Construct proper user agent
+        if 'user_agent' not in self.config:
+            app_version = self.config.get('appVersion', 'v1.0').lstrip('v')
+            app_name = self.config.get('appName', 'RedditSentimentAnalyzer')
+            username = self.config.get('redditUsername', 'anonymous')
+            self.config['user_agent'] = f"script:{app_name}:{app_version} (by /u/{username})"
+        
+        self.logger.info(f"🔧 Using User-Agent: {self.config['user_agent']}")
+        
         # Log environment and network info
         self._log_environment_info()
         
         for attempt in range(self.max_retries):
             try:
+                # Initialize with required parameters
                 self.reddit = Reddit(
                     client_id=self.config['client_id'],
                     client_secret=self.config['client_secret'],
                     user_agent=self.config['user_agent'],
                     username=self.config.get('redditUsername'),
                     password=self.config.get('redditPassword'),
-                    check_for_updates=False
+                    check_for_updates=False,
+                    requestor_kwargs={'timeout': 30}
                 )
                 
                 # Validate authentication
@@ -58,15 +70,16 @@ class RedditDataCollector:
                 
             except OAuthException as e:
                 self.logger.error(f"Authentication error (attempt {attempt + 1}/{self.max_retries}): {e}")
+                self.logger.error("🔑 Verify your credentials and user agent format")
                 if attempt == self.max_retries - 1:
                     raise
-                time.sleep(self.retry_delay)
+                time.sleep(self.retry_delay * (attempt + 1))  # Exponential backoff
                 
             except Exception as e:
                 self.logger.error(f"Initialization error (attempt {attempt + 1}/{self.max_retries}): {e}")
                 if attempt == self.max_retries - 1:
                     raise
-                time.sleep(self.retry_delay)
+                time.sleep(self.retry_delay * (attempt + 1))
 
     def _log_environment_info(self):
         """Log environment and network information"""
@@ -88,13 +101,25 @@ class RedditDataCollector:
     def _validate_authentication(self):
         """Validate Reddit API authentication"""
         try:
+            # First test with user identity
+            user = self.reddit.user.me()
+            if user:
+                self.logger.info(f"✓ Successfully authenticated as: {user.name}")
+            
             # Test with read-only operation
             test_subreddit = self.reddit.subreddit('announcements')
             next(test_subreddit.hot(limit=1))
-            self.logger.info("✅ Authentication validated successfully")
+            self.logger.info("✅ API access validated successfully")
+            
+        except OAuthException as e:
+            self.logger.error("❌ Authentication validation failed")
+            self.logger.error("- Ensure your Reddit app is type 'script'")
+            self.logger.error("- Verify client_id and client_secret are correct")
+            self.logger.error("- Check if username and password are required")
+            raise
             
         except Exception as e:
-            self.logger.error("❌ Authentication validation failed")
+            self.logger.error("❌ API access validation failed")
             if hasattr(e, 'response'):
                 self.logger.error(f"Response Status: {e.response.status_code}")
                 self.logger.error(f"Response Headers: {dict(e.response.headers)}")
@@ -102,16 +127,28 @@ class RedditDataCollector:
 
     def _handle_rate_limit(self, response_headers):
         """Handle rate limiting based on response headers"""
-        if 'x-ratelimit-remaining' in response_headers:
-            remaining = float(response_headers['x-ratelimit-remaining'])
-            reset_time = int(response_headers['x-ratelimit-reset'])
-            
-            if remaining <= 0:
-                sleep_time = reset_time + 1
-                self.logger.warning(f"Rate limit reached. Sleeping for {sleep_time} seconds")
-                time.sleep(sleep_time)
-                return True
-        return False
+        try:
+            if 'x-ratelimit-remaining' in response_headers:
+                remaining = float(response_headers['x-ratelimit-remaining'])
+                reset_time = int(response_headers['x-ratelimit-reset'])
+                used = response_headers.get('x-ratelimit-used', '0')
+                
+                self.logger.debug(f"Rate Limit Status: {used} used, {remaining} remaining, reset in {reset_time}s")
+                
+                if remaining <= 0:
+                    sleep_time = reset_time + 1
+                    self.logger.warning(f"⚠️ Rate limit reached. Sleeping for {sleep_time} seconds")
+                    time.sleep(sleep_time)
+                    return True
+                elif remaining < 10:  # Proactive rate limit handling
+                    sleep_time = 2
+                    self.logger.info(f"⚠️ Rate limit approaching. Adding delay of {sleep_time}s")
+                    time.sleep(sleep_time)
+            return False
+        except Exception as e:
+            self.logger.error(f"Error handling rate limit: {e}")
+            time.sleep(5)  # Default safety delay
+            return False
 
     def collect_data(self):
         """Collect data with enhanced error handling"""
@@ -125,12 +162,21 @@ class RedditDataCollector:
                     posts = self._collect_subreddit_posts(subreddit)
                     all_posts.extend(posts)
                     
-                except (RateLimitExceeded, RedditAPIException) as e:
-                    self.logger.warning(f"⚠️ Rate limit hit for r/{subreddit_name}: {e}")
-                    if hasattr(e, 'sleep_time'):
-                        time.sleep(e.sleep_time)
+                except RateLimitExceeded as e:
+                    self.logger.warning(f"⚠️ Rate limit hit for r/{subreddit_name}")
+                    # Get rate limit info from response headers if available
+                    if hasattr(e, 'response') and 'x-ratelimit-reset' in e.response.headers:
+                        reset_time = int(e.response.headers['x-ratelimit-reset'])
+                        self.logger.info(f"Waiting for {reset_time} seconds")
+                        time.sleep(reset_time + 1)
                     else:
-                        time.sleep(60)  # Default sleep if headers not available
+                        self.logger.info("Rate limit info not available, waiting 60 seconds")
+                        time.sleep(60)
+                    continue
+                    
+                except RedditAPIException as e:
+                    self.logger.warning(f"⚠️ Reddit API error for r/{subreddit_name}: {e}")
+                    time.sleep(5)  # Short delay before retrying
                     continue
                     
                 except Exception as e:
