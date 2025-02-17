@@ -13,7 +13,13 @@ import platform
 import praw
 import logging
 import requests
-from prawcore.exceptions import ResponseException, RequestException, RateLimitExceeded, OAuthException
+from prawcore.exceptions import (
+    ResponseException,
+    RequestException,
+    OAuthException,
+    RateLimitExceeded as PrawcoreRateLimitExceeded
+)
+from praw.exceptions import RedditAPIException
 
 class RedditDataCollector:
     def __init__(self, config):
@@ -101,8 +107,21 @@ class RedditDataCollector:
                 self.logger.error(f"Response Headers: {dict(e.response.headers)}")
             raise
 
+    def _handle_rate_limit(self, response_headers):
+        """Handle rate limiting based on response headers"""
+        if 'x-ratelimit-remaining' in response_headers:
+            remaining = float(response_headers['x-ratelimit-remaining'])
+            reset_time = int(response_headers['x-ratelimit-reset'])
+            
+            if remaining <= 0:
+                sleep_time = reset_time + 1
+                self.logger.warning(f"Rate limit reached. Sleeping for {sleep_time} seconds")
+                time.sleep(sleep_time)
+                return True
+        return False
+
     def collect_data(self):
-        """Collect data with enhanced error handling and rate limiting"""
+        """Collect data with enhanced error handling"""
         try:
             all_posts = []
             for subreddit_name in self.config['subreddits']:
@@ -113,9 +132,12 @@ class RedditDataCollector:
                     posts = self._collect_subreddit_posts(subreddit)
                     all_posts.extend(posts)
                     
-                except RateLimitExceeded as e:
-                    self.logger.warning(f"⚠️ Rate limit exceeded for r/{subreddit_name}: {e}")
-                    time.sleep(int(e.response.headers.get('x-ratelimit-reset', 60)))
+                except (PrawcoreRateLimitExceeded, RedditAPIException) as e:
+                    self.logger.warning(f"⚠️ Rate limit hit for r/{subreddit_name}: {e}")
+                    if hasattr(e, 'response') and hasattr(e.response, 'headers'):
+                        self._handle_rate_limit(e.response.headers)
+                    else:
+                        time.sleep(60)  # Default sleep if headers not available
                     continue
                     
                 except Exception as e:
@@ -126,6 +148,7 @@ class RedditDataCollector:
             
         except Exception as e:
             self.logger.error(f"❌ Data collection failed: {e}")
+            self.logger.exception("Full traceback:")
             return pd.DataFrame()
 
     def _collect_subreddit_posts(self, subreddit):
