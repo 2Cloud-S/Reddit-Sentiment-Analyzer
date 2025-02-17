@@ -2,8 +2,7 @@ from praw import Reddit
 from prawcore.exceptions import (
     ResponseException,
     RequestException,
-    OAuthException,
-    RateLimitExceeded
+    OAuthException
 )
 from praw.exceptions import RedditAPIException
 import pandas as pd
@@ -30,6 +29,8 @@ class RedditDataCollector:
         self.config = config
         self.max_retries = 3
         self.retry_delay = 5
+        self.rate_limit_remaining = 60  # Default rate limit per minute
+        self.rate_limit_reset = 0
         
         # Initialize Reddit instance with retry logic
         self._initialize_reddit_client()
@@ -125,28 +126,32 @@ class RedditDataCollector:
                 self.logger.error(f"Response Headers: {dict(e.response.headers)}")
             raise
 
-    def _handle_rate_limit(self, response_headers):
-        """Handle rate limiting based on response headers"""
+    def _check_rate_limit(self, response):
+        """Check rate limit from response headers"""
         try:
-            if 'x-ratelimit-remaining' in response_headers:
-                remaining = float(response_headers['x-ratelimit-remaining'])
-                reset_time = int(response_headers['x-ratelimit-reset'])
-                used = response_headers.get('x-ratelimit-used', '0')
-                
-                self.logger.debug(f"Rate Limit Status: {used} used, {remaining} remaining, reset in {reset_time}s")
-                
-                if remaining <= 0:
-                    sleep_time = reset_time + 1
-                    self.logger.warning(f"⚠️ Rate limit reached. Sleeping for {sleep_time} seconds")
-                    time.sleep(sleep_time)
-                    return True
-                elif remaining < 10:  # Proactive rate limit handling
-                    sleep_time = 2
-                    self.logger.info(f"⚠️ Rate limit approaching. Adding delay of {sleep_time}s")
-                    time.sleep(sleep_time)
+            headers = response.headers if hasattr(response, 'headers') else {}
+            
+            # Update rate limit info
+            self.rate_limit_remaining = int(headers.get('x-ratelimit-remaining', 60))
+            self.rate_limit_reset = int(headers.get('x-ratelimit-reset', 0))
+            self.rate_limit_used = int(headers.get('x-ratelimit-used', 0))
+            
+            self.logger.debug(f"Rate Limits - Remaining: {self.rate_limit_remaining}, Reset: {self.rate_limit_reset}s, Used: {self.rate_limit_used}")
+            
+            if self.rate_limit_remaining <= 0:
+                wait_time = self.rate_limit_reset + 1
+                self.logger.warning(f"⚠️ Rate limit exceeded. Waiting {wait_time} seconds.")
+                time.sleep(wait_time)
+                return True
+            elif self.rate_limit_remaining < 10:
+                wait_time = 2
+                self.logger.info(f"⚠️ Rate limit approaching. Adding delay of {wait_time}s")
+                time.sleep(wait_time)
+            
             return False
+            
         except Exception as e:
-            self.logger.error(f"Error handling rate limit: {e}")
+            self.logger.warning(f"⚠️ Error checking rate limit: {e}")
             time.sleep(5)  # Default safety delay
             return False
 
@@ -162,21 +167,18 @@ class RedditDataCollector:
                     posts = self._collect_subreddit_posts(subreddit)
                     all_posts.extend(posts)
                     
-                except RateLimitExceeded as e:
-                    self.logger.warning(f"⚠️ Rate limit hit for r/{subreddit_name}")
-                    # Get rate limit info from response headers if available
-                    if hasattr(e, 'response') and 'x-ratelimit-reset' in e.response.headers:
-                        reset_time = int(e.response.headers['x-ratelimit-reset'])
-                        self.logger.info(f"Waiting for {reset_time} seconds")
-                        time.sleep(reset_time + 1)
+                except ResponseException as e:
+                    if hasattr(e, 'response') and e.response.status_code == 429:  # Too Many Requests
+                        self.logger.warning(f"⚠️ Rate limit hit for r/{subreddit_name}")
+                        self._check_rate_limit(e.response)
                     else:
-                        self.logger.info("Rate limit info not available, waiting 60 seconds")
-                        time.sleep(60)
+                        self.logger.error(f"❌ API error for r/{subreddit_name}: {e}")
+                        time.sleep(5)
                     continue
                     
                 except RedditAPIException as e:
                     self.logger.warning(f"⚠️ Reddit API error for r/{subreddit_name}: {e}")
-                    time.sleep(5)  # Short delay before retrying
+                    time.sleep(5)
                     continue
                     
                 except Exception as e:
@@ -203,8 +205,14 @@ class RedditDataCollector:
                 submissions = subreddit.top(time_filter=timeframe, limit=limit)
             
             for submission in submissions:
+                # Check rate limit before each request
+                if hasattr(submission, '_reddit'):
+                    response = submission._reddit._core._requestor._http.history[-1] if submission._reddit._core._requestor._http.history else None
+                    if response:
+                        self._check_rate_limit(response)
+                
                 posts.append(self._process_submission(submission))
-                time.sleep(0.5)  # Rate limiting
+                time.sleep(0.5)  # Minimum delay between requests
                 
         except Exception as e:
             self.logger.error(f"Error in subreddit collection: {e}")
