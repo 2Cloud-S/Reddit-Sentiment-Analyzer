@@ -1,19 +1,11 @@
-from praw import Reddit
-from prawcore.exceptions import (
-    ResponseException,
-    RequestException,
-    OAuthException
-)
-from praw.exceptions import RedditAPIException
-import pandas as pd
-import yaml
-import os
-from datetime import datetime, timedelta
-import re
-import time
 import logging
+import time
+from datetime import datetime
 import requests
-import base64
+from bs4 import BeautifulSoup
+from apify_client import ApifyClient
+import os
+import pandas as pd
 
 class RedditDataCollector:
     def __init__(self, config):
@@ -28,197 +20,125 @@ class RedditDataCollector:
         
         # Store config
         self.config = config
-        self.max_retries = 3
         self.retry_delay = 5
-        self.rate_limit_remaining = 60
-        self.rate_limit_reset = 0
         
-        # Initialize Reddit instance with retry logic
-        self._initialize_reddit_client()
+        # Initialize Apify client
+        self._initialize_apify_client()
         
-    def _initialize_reddit_client(self):
-        """Initialize Reddit client with retry logic and validation"""
-        self.logger.info("\n=== Reddit Client Initialization ===")
+    def _initialize_apify_client(self):
+        """Initialize Apify client with residential proxies"""
+        self.logger.info("\n=== Apify Client Initialization ===")
+        try:
+            self.apify_client = ApifyClient(os.environ['APIFY_TOKEN'])
+            self.proxy_configuration = {
+                "useApifyProxy": True,
+                "apifyProxyGroups": ["RESIDENTIAL"],
+                "countryCode": "US"
+            }
+            self.logger.info("✅ Apify client initialized with residential proxies")
+            
+            # Test proxy connection
+            proxy_url = self.apify_client.proxy.get_proxy_url(**self.proxy_configuration)
+            self.proxies = {
+                'http': proxy_url,
+                'https': proxy_url
+            }
+            self.logger.info("✅ Proxy configuration tested successfully")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Apify client initialization failed: {e}")
+            raise
+
+    def _scrape_subreddit_posts(self, subreddit_name, timeframe, limit):
+        """Scrape posts using Apify residential proxies"""
+        self.logger.info(f"🔄 Scraping r/{subreddit_name} with timeframe: {timeframe}")
         
-        # Construct proper user agent
-        if 'user_agent' not in self.config:
-            app_version = self.config.get('appVersion', 'v1.0').lstrip('v')
-            app_name = self.config.get('appName', 'RedditSentimentAnalyzer')
-            username = self.config.get('redditUsername', 'anonymous')
-            self.config['user_agent'] = f"script:{app_name}:{app_version} (by /u/{username})"
-        
-        self.logger.info(f"🔧 Using User-Agent: {self.config['user_agent']}")
-        
-        # Log environment and network info
-        self._log_environment_info()
-        
-        for attempt in range(self.max_retries):
-            try:
-                # Initialize with script app credentials
-                self.reddit = Reddit(
-                    client_id=self.config['client_id'],
-                    client_secret=self.config['client_secret'],
-                    user_agent=self.config['user_agent'],
-                    username=self.config.get('redditUsername'),
-                    password=self.config.get('redditPassword'),
-                    check_for_updates=False,
-                    requestor_kwargs={
-                        'timeout': 30,
-                        'headers': {
-                            'User-Agent': self.config['user_agent']
+        posts = []
+        try:
+            # Construct URL based on timeframe
+            url = f"https://old.reddit.com/r/{subreddit_name}/top/?t={timeframe}"
+            
+            # Add custom headers
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            
+            response = requests.get(url, proxies=self.proxies, headers=headers, timeout=30)
+            self.logger.debug(f"Response status: {response.status_code}")
+            
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'lxml')
+                
+                # Find all post elements
+                post_elements = soup.find_all('div', class_='thing')
+                self.logger.info(f"Found {len(post_elements)} posts")
+                
+                for element in post_elements[:limit]:
+                    try:
+                        # Extract post data
+                        post = {
+                            'id': element.get('id', '').split('_')[-1],
+                            'title': element.find('a', class_='title').text.strip() if element.find('a', class_='title') else '',
+                            'selftext': element.find('div', class_='usertext-body').text.strip() if element.find('div', class_='usertext-body') else '',
+                            'score': int(element.find('div', class_='score').get('title', 0)) if element.find('div', class_='score') else 0,
+                            'created_utc': datetime.fromtimestamp(int(element.get('data-timestamp', 0)) / 1000) if element.get('data-timestamp') else datetime.now(),
+                            'num_comments': int(element.find('a', class_='comments').text.split()[0].replace(',', '')) if element.find('a', class_='comments') else 0,
+                            'subreddit': subreddit_name,
+                            'url': f"https://reddit.com{element.find('a', class_='title')['href']}" if element.find('a', class_='title') else ''
                         }
-                    }
-                )
+                        
+                        # Add post to list
+                        posts.append(post)
+                        self.logger.debug(f"Processed post: {post['id']}")
+                        
+                        # Respect rate limits
+                        time.sleep(0.5)
+                        
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ Error processing post: {e}")
+                        continue
+                        
+            else:
+                self.logger.error(f"❌ Failed to fetch subreddit: {response.status_code}")
                 
-                # Get OAuth token directly if needed
-                if not self._validate_authentication():
-                    auth = base64.b64encode(
-                        f"{self.config['client_id']}:{self.config['client_secret']}".encode()
-                    ).decode()
-                    
-                    headers = {
-                        'User-Agent': self.config['user_agent'],
-                        'Authorization': f'Basic {auth}'
-                    }
-                    
-                    data = {
-                        'grant_type': 'client_credentials',
-                        'duration': 'temporary'
-                    }
-                    
-                    self.logger.info("🔑 Obtaining OAuth token...")
-                    response = requests.post(
-                        'https://www.reddit.com/api/v1/access_token',
-                        headers=headers,
-                        data=data
-                    )
-                    
-                    if response.status_code == 200:
-                        token_data = response.json()
-                        self.logger.info("✅ OAuth token obtained successfully")
-                        self.reddit._core._authorizer.access_token = token_data['access_token']
-                    else:
-                        self.logger.error(f"❌ Failed to obtain OAuth token: {response.text}")
-                        raise ResponseException(response)
-                
-                self.logger.info("✅ Reddit client initialized successfully")
-                break
-                
-            except OAuthException as e:
-                self.logger.error(f"Authentication error (attempt {attempt + 1}/{self.max_retries}): {e}")
-                self.logger.error("🔑 Verify your credentials and user agent format")
-                if attempt == self.max_retries - 1:
-                    raise
-                time.sleep(self.retry_delay * (attempt + 1))
-                
-            except Exception as e:
-                self.logger.error(f"Initialization error (attempt {attempt + 1}/{self.max_retries}): {e}")
-                if attempt == self.max_retries - 1:
-                    raise
-                time.sleep(self.retry_delay * (attempt + 1))
-
-    def _log_environment_info(self):
-        """Log environment and network information"""
-        try:
-            # Test network connectivity
-            ip_response = requests.get('https://api.ipify.org?format=json', timeout=5)
-            self.logger.info(f"🌐 Container IP: {ip_response.json()['ip']}")
-            
-            # Test Reddit API accessibility
-            reddit_response = requests.get('https://www.reddit.com/api/v1/access_token',
-                                         headers={'User-Agent': self.config['user_agent']},
-                                         timeout=5)
-            self.logger.info(f"📡 Reddit API Status: {reddit_response.status_code}")
-            self.logger.info(f"🔑 Reddit API Headers: {dict(reddit_response.headers)}")
-            
         except Exception as e:
-            self.logger.warning(f"⚠️ Network diagnostics failed: {e}")
-
-    def _validate_authentication(self):
-        """Validate Reddit API authentication"""
-        try:
-            # First test with user identity
-            user = self.reddit.user.me()
-            if user:
-                self.logger.info(f"✓ Successfully authenticated as: {user.name}")
+            self.logger.error(f"❌ Web scraping failed: {e}")
             
-            # Test with read-only operation
-            test_subreddit = self.reddit.subreddit('announcements')
-            next(test_subreddit.hot(limit=1))
-            self.logger.info("✅ API access validated successfully")
-            
-        except OAuthException as e:
-            self.logger.error("❌ Authentication validation failed")
-            self.logger.error("- Ensure your Reddit app is type 'script'")
-            self.logger.error("- Verify client_id and client_secret are correct")
-            self.logger.error("- Check if username and password are required")
-            raise
-            
-        except Exception as e:
-            self.logger.error("❌ API access validation failed")
-            if hasattr(e, 'response'):
-                self.logger.error(f"Response Status: {e.response.status_code}")
-                self.logger.error(f"Response Headers: {dict(e.response.headers)}")
-            raise
-
-    def _check_rate_limit(self, response):
-        """Check rate limit from response headers"""
-        try:
-            headers = response.headers if hasattr(response, 'headers') else {}
-            
-            # Update rate limit info
-            self.rate_limit_remaining = int(headers.get('x-ratelimit-remaining', 60))
-            self.rate_limit_reset = int(headers.get('x-ratelimit-reset', 0))
-            self.rate_limit_used = int(headers.get('x-ratelimit-used', 0))
-            
-            self.logger.debug(f"Rate Limits - Remaining: {self.rate_limit_remaining}, Reset: {self.rate_limit_reset}s, Used: {self.rate_limit_used}")
-            
-            if self.rate_limit_remaining <= 0:
-                wait_time = self.rate_limit_reset + 1
-                self.logger.warning(f"⚠️ Rate limit exceeded. Waiting {wait_time} seconds.")
-                time.sleep(wait_time)
-                return True
-            elif self.rate_limit_remaining < 10:
-                wait_time = 2
-                self.logger.info(f"⚠️ Rate limit approaching. Adding delay of {wait_time}s")
-                time.sleep(wait_time)
-            
-            return False
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ Error checking rate limit: {e}")
-            time.sleep(5)  # Default safety delay
-            return False
+        return posts
 
     def collect_data(self):
-        """Collect data with enhanced error handling"""
+        """Collect data using web scraping with retries"""
         try:
             all_posts = []
+            
             for subreddit_name in self.config['subreddits']:
                 self.logger.info(f"\n📥 Collecting data from r/{subreddit_name}")
                 
-                try:
-                    subreddit = self.reddit.subreddit(subreddit_name)
-                    posts = self._collect_subreddit_posts(subreddit)
-                    all_posts.extend(posts)
-                    
-                except ResponseException as e:
-                    if hasattr(e, 'response') and e.response.status_code == 429:  # Too Many Requests
-                        self.logger.warning(f"⚠️ Rate limit hit for r/{subreddit_name}")
-                        self._check_rate_limit(e.response)
-                    else:
-                        self.logger.error(f"❌ API error for r/{subreddit_name}: {e}")
-                        time.sleep(5)
-                    continue
-                    
-                except RedditAPIException as e:
-                    self.logger.warning(f"⚠️ Reddit API error for r/{subreddit_name}: {e}")
-                    time.sleep(5)
-                    continue
-                    
-                except Exception as e:
-                    self.logger.error(f"❌ Error collecting from r/{subreddit_name}: {e}")
-                    continue
+                retries = 3
+                while retries > 0:
+                    try:
+                        posts = self._scrape_subreddit_posts(
+                            subreddit_name,
+                            self.config['timeframe'],
+                            self.config['postLimit']
+                        )
+                        
+                        if posts:
+                            all_posts.extend(posts)
+                            self.logger.info(f"✅ Successfully collected {len(posts)} posts from r/{subreddit_name}")
+                            break
+                        else:
+                            retries -= 1
+                            self.logger.warning(f"⚠️ No posts collected, retries left: {retries}")
+                            time.sleep(self.retry_delay)
+                            
+                    except Exception as e:
+                        retries -= 1
+                        self.logger.error(f"❌ Error collecting data: {e}, retries left: {retries}")
+                        time.sleep(self.retry_delay)
+                        
+                # Add delay between subreddits
+                time.sleep(2)
             
             return pd.DataFrame(all_posts)
             
@@ -226,66 +146,3 @@ class RedditDataCollector:
             self.logger.error(f"❌ Data collection failed: {e}")
             self.logger.exception("Full traceback:")
             return pd.DataFrame()
-
-    def _collect_subreddit_posts(self, subreddit):
-        """Collect posts from a subreddit with rate limiting"""
-        posts = []
-        timeframe = self.config['timeframe']
-        limit = self.config['postLimit']
-        
-        try:
-            if timeframe == 'all':
-                submissions = subreddit.top(limit=limit)
-            else:
-                submissions = subreddit.top(time_filter=timeframe, limit=limit)
-            
-            for submission in submissions:
-                # Check rate limit before each request
-                if hasattr(submission, '_reddit'):
-                    response = submission._reddit._core._requestor._http.history[-1] if submission._reddit._core._requestor._http.history else None
-                    if response:
-                        self._check_rate_limit(response)
-                
-                posts.append(self._process_submission(submission))
-                time.sleep(0.5)  # Minimum delay between requests
-                
-        except Exception as e:
-            self.logger.error(f"Error in subreddit collection: {e}")
-            
-        return posts
-
-    def _process_submission(self, submission):
-        """Process a submission and extract relevant data"""
-        return {
-            'id': submission.id,
-            'title': submission.title,
-            'selftext': submission.selftext,
-            'score': submission.score,
-            'created_utc': datetime.fromtimestamp(submission.created_utc),
-            'num_comments': submission.num_comments,
-            'subreddit': submission.subreddit.display_name
-        }
-
-    def test_authentication(self):
-        """Test Reddit API authentication"""
-        try:
-            self.logger.info("\nTesting Reddit API authentication...")
-            # Try to access user identity
-            user = self.reddit.user.me()
-            if user is None:
-                self.logger.warning("⚠️ Warning: Authenticated but couldn't get user details")
-                return True
-            self.logger.info(f"✓ Successfully authenticated as: {user.name}")
-            return True
-        except Exception as e:
-            self.logger.error("\n❌ Authentication test failed:")
-            self.logger.error(f"- Error type: {type(e).__name__}")
-            self.logger.error(f"- Error message: {str(e)}")
-            if '401' in str(e):
-                self.logger.error("- Issue: Invalid credentials or incorrect format")
-                self.logger.error("- Solution: Verify your client_id and client_secret")
-                self.logger.error("- Note: Make sure you're using a 'script' type app")
-            elif '403' in str(e):
-                self.logger.error("- Issue: Insufficient permissions")
-                self.logger.error("- Solution: Check app permissions and user agent format")
-            return False
