@@ -1,25 +1,18 @@
 from praw import Reddit
+from prawcore.exceptions import (
+    ResponseException,
+    RequestException,
+    OAuthException
+)
+from praw.exceptions import RedditAPIException, RateLimitExceeded
 import pandas as pd
 import yaml
 import os
 from datetime import datetime, timedelta
 import re
 import time
-from prawcore import Requestor
-from prawcore.auth import ScriptAuthorizer, TrustedAuthenticator
-import base64
-import sys
-import platform
-import praw
 import logging
 import requests
-from prawcore.exceptions import (
-    ResponseException,
-    RequestException,
-    OAuthException,
-    RateLimitExceeded as PrawcoreRateLimitExceeded
-)
-from praw.exceptions import RedditAPIException
 
 class RedditDataCollector:
     def __init__(self, config):
@@ -132,10 +125,10 @@ class RedditDataCollector:
                     posts = self._collect_subreddit_posts(subreddit)
                     all_posts.extend(posts)
                     
-                except (PrawcoreRateLimitExceeded, RedditAPIException) as e:
+                except (RateLimitExceeded, RedditAPIException) as e:
                     self.logger.warning(f"⚠️ Rate limit hit for r/{subreddit_name}: {e}")
-                    if hasattr(e, 'response') and hasattr(e.response, 'headers'):
-                        self._handle_rate_limit(e.response.headers)
+                    if hasattr(e, 'sleep_time'):
+                        time.sleep(e.sleep_time)
                     else:
                         time.sleep(60)  # Default sleep if headers not available
                     continue
@@ -171,6 +164,18 @@ class RedditDataCollector:
             self.logger.error(f"Error in subreddit collection: {e}")
             
         return posts
+
+    def _process_submission(self, submission):
+        """Process a submission and extract relevant data"""
+        return {
+            'id': submission.id,
+            'title': submission.title,
+            'selftext': submission.selftext,
+            'score': submission.score,
+            'created_utc': datetime.fromtimestamp(submission.created_utc),
+            'num_comments': submission.num_comments,
+            'subreddit': submission.subreddit.display_name
+        }
 
     def test_authentication(self):
         """Test Reddit API authentication"""
