@@ -13,6 +13,7 @@ import re
 import time
 import logging
 import requests
+import base64
 
 class RedditDataCollector:
     def __init__(self, config):
@@ -29,7 +30,7 @@ class RedditDataCollector:
         self.config = config
         self.max_retries = 3
         self.retry_delay = 5
-        self.rate_limit_remaining = 60  # Default rate limit per minute
+        self.rate_limit_remaining = 60
         self.rate_limit_reset = 0
         
         # Initialize Reddit instance with retry logic
@@ -53,7 +54,7 @@ class RedditDataCollector:
         
         for attempt in range(self.max_retries):
             try:
-                # Initialize with required parameters
+                # Initialize with script app credentials
                 self.reddit = Reddit(
                     client_id=self.config['client_id'],
                     client_secret=self.config['client_secret'],
@@ -61,11 +62,45 @@ class RedditDataCollector:
                     username=self.config.get('redditUsername'),
                     password=self.config.get('redditPassword'),
                     check_for_updates=False,
-                    requestor_kwargs={'timeout': 30}
+                    requestor_kwargs={
+                        'timeout': 30,
+                        'headers': {
+                            'User-Agent': self.config['user_agent']
+                        }
+                    }
                 )
                 
-                # Validate authentication
-                self._validate_authentication()
+                # Get OAuth token directly if needed
+                if not self._validate_authentication():
+                    auth = base64.b64encode(
+                        f"{self.config['client_id']}:{self.config['client_secret']}".encode()
+                    ).decode()
+                    
+                    headers = {
+                        'User-Agent': self.config['user_agent'],
+                        'Authorization': f'Basic {auth}'
+                    }
+                    
+                    data = {
+                        'grant_type': 'client_credentials',
+                        'duration': 'temporary'
+                    }
+                    
+                    self.logger.info("🔑 Obtaining OAuth token...")
+                    response = requests.post(
+                        'https://www.reddit.com/api/v1/access_token',
+                        headers=headers,
+                        data=data
+                    )
+                    
+                    if response.status_code == 200:
+                        token_data = response.json()
+                        self.logger.info("✅ OAuth token obtained successfully")
+                        self.reddit._core._authorizer.access_token = token_data['access_token']
+                    else:
+                        self.logger.error(f"❌ Failed to obtain OAuth token: {response.text}")
+                        raise ResponseException(response)
+                
                 self.logger.info("✅ Reddit client initialized successfully")
                 break
                 
@@ -74,7 +109,7 @@ class RedditDataCollector:
                 self.logger.error("🔑 Verify your credentials and user agent format")
                 if attempt == self.max_retries - 1:
                     raise
-                time.sleep(self.retry_delay * (attempt + 1))  # Exponential backoff
+                time.sleep(self.retry_delay * (attempt + 1))
                 
             except Exception as e:
                 self.logger.error(f"Initialization error (attempt {attempt + 1}/{self.max_retries}): {e}")
