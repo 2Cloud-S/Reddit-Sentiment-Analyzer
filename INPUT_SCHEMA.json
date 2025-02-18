@@ -7,12 +7,11 @@
             "title": "Subreddits",
             "type": "array",
             "description": "Select one or more subreddits to analyze. The analyzer will collect and analyze posts from these communities.",
-            "editor": "stringList",
+            "editor": "select",
             "default": ["wallstreetbets", "stocks", "investing"],
-            "items": {
-                "type": "string",
-                "enum": ["wallstreetbets", "stocks", "investing", "cryptocurrency", "finance", "stockmarket", "options", "pennystocks", "trading", "forex", "algotrading", "dividends", "etfs", "personalfinance", "economy"]
-            }
+            "enum": ["wallstreetbets", "stocks", "investing", "cryptocurrency", "finance", "stockmarket", "options", "pennystocks", "trading", "forex", "algotrading", "dividends", "etfs", "personalfinance", "economy"],
+            "enumTitles": ["r/wallstreetbets", "r/stocks", "r/investing", "r/cryptocurrency", "r/finance", "r/stockmarket", "r/options", "r/pennystocks", "r/trading", "r/forex", "r/algotrading", "r/dividends", "r/etfs", "r/personalfinance", "r/economy"],
+            "isMulti": true
         },
         "timeframe": {
             "title": "Time Frame",
@@ -20,7 +19,8 @@
             "description": "Select the time period for data collection. This determines how far back to collect posts.",
             "editor": "select",
             "default": "week",
-            "enum": ["hour", "day", "week", "month", "year", "all"]
+            "enum": ["hour", "day", "week", "month", "year", "all"],
+            "enumTitles": ["Last Hour", "Last 24 Hours", "Last Week", "Last Month", "Last Year", "All Time"]
         },
         "postLimit": {
             "title": "Post Limit",
