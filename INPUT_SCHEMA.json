@@ -9,9 +9,12 @@
             "description": "Select one or more subreddits to analyze. The analyzer will collect and analyze posts from these communities.",
             "editor": "select",
             "default": ["wallstreetbets", "stocks", "investing"],
-            "enum": ["wallstreetbets", "stocks", "investing", "cryptocurrency", "finance", "stockmarket", "options", "pennystocks", "trading", "forex", "algotrading", "dividends", "etfs", "personalfinance", "economy"],
-            "enumTitles": ["r/wallstreetbets", "r/stocks", "r/investing", "r/cryptocurrency", "r/finance", "r/stockmarket", "r/options", "r/pennystocks", "r/trading", "r/forex", "r/algotrading", "r/dividends", "r/etfs", "r/personalfinance", "r/economy"],
-            "isMulti": true
+            "items": {
+                "type": "string",
+                "enum": ["wallstreetbets", "stocks", "investing", "cryptocurrency", "finance", "stockmarket", "options", "pennystocks", "trading", "forex", "algotrading", "dividends", "etfs", "personalfinance", "economy"],
+                "enumTitles": ["r/wallstreetbets", "r/stocks", "r/investing", "r/cryptocurrency", "r/finance", "r/stockmarket", "r/options", "r/pennystocks", "r/trading", "r/forex", "r/algotrading", "r/dividends", "r/etfs", "r/personalfinance", "r/economy"]
+            },
+            "uniqueItems": true
         },
         "timeframe": {
             "title": "Time Frame",
