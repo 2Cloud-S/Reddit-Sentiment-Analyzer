@@ -9,7 +9,8 @@
             "description": "List of subreddits to analyze",
             "default": ["wallstreetbets", "stocks", "investing"],
             "items": {
-                "type": "string"
+                "type": "string",
+                "enum": ["wallstreetbets", "stocks", "investing", "cryptocurrency", "finance", "stockmarket", "options", "pennystocks", "trading", "forex", "algotrading", "dividends", "etfs", "personalfinance", "economy"]
             }
         },
         "timeframe": {
