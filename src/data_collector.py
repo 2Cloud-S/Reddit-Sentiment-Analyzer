@@ -34,20 +34,20 @@ class RedditDataCollector:
         self.logger.info("\n=== Apify Client Initialization ===")
         try:
             self.apify_client = ApifyClient(os.environ['APIFY_TOKEN'])
+            
+            # Create a new proxy configuration
             self.proxy_configuration = {
                 "useApifyProxy": True,
-                "apifyProxyGroups": ["RESIDENTIAL"],
+                "groups": ["RESIDENTIAL"],
                 "countryCode": "US"
             }
-            self.logger.info("✅ Apify client initialized with residential proxies")
             
-            # Test proxy connection
-            proxy_url = self.apify_client.proxy.get_proxy_url(**self.proxy_configuration)
-            self.proxies = {
-                'http': proxy_url,
-                'https': proxy_url
-            }
-            self.logger.info("✅ Proxy configuration tested successfully")
+            # Initialize session with proxy rotation
+            self.session = requests.Session()
+            self.session.headers.update(self.headers)
+            
+            # Log success
+            self.logger.info("✅ Apify client initialized with residential proxies")
             
         except Exception as e:
             self.logger.error(f"❌ Apify client initialization failed: {e}")
@@ -116,7 +116,7 @@ class RedditDataCollector:
             try:
                 # Use the JSON endpoint
                 url = f"https://www.reddit.com/r/{subreddit}/top.json?t={timeframe}&limit={post_limit}"
-                response = requests.get(url, headers=self.headers)
+                response = self.session.get(url)
                 
                 if response.status_code == 200:
                     data = response.json()
@@ -138,10 +138,10 @@ class RedditDataCollector:
                     # Rate limiting to avoid getting blocked
                     time.sleep(2)
                 else:
-                    print(f"Error accessing r/{subreddit}: Status code {response.status_code}")
+                    self.logger.error(f"Error accessing r/{subreddit}: Status code {response.status_code}")
                     
             except Exception as e:
-                print(f"Error collecting data from r/{subreddit}: {str(e)}")
+                self.logger.error(f"Error collecting data from r/{subreddit}: {str(e)}")
                 continue
                 
         return pd.DataFrame(all_posts) if all_posts else pd.DataFrame()
