@@ -42,28 +42,16 @@ def main():
             
         input_data = input_record['value']
         
-        # Construct user agent once
-        user_agent = f"script:{input_data.get('appName', 'RedditSentimentAnalyzer')}:v{input_data.get('appVersion', '1.0').lstrip('v')} (by /u/{input_data['redditUsername']})"
-        
-        # Create unified config
+        # Create simplified config without API credentials
         config = {
-            'client_id': input_data['clientId'],
-            'client_secret': input_data['clientSecret'],
-            'user_agent': user_agent,
-            'appName': input_data.get('appName', 'RedditSentimentAnalyzer'),
-            'appVersion': input_data.get('appVersion', 'v1.0'),
-            'redditUsername': input_data['redditUsername'],
             'subreddits': input_data.get('subreddits', ['wallstreetbets', 'stocks', 'investing']),
             'timeframe': input_data.get('timeframe', 'week'),
             'postLimit': input_data.get('postLimit', 100)
         }
         
-        print("Debug - Configuration:", {
-            **config,
-            'client_secret': '[HIDDEN]'
-        })
+        print("Debug - Configuration:", config)
         
-        # Initialize components with single config
+        # Initialize components
         collector = RedditDataCollector(config)
         analyzer = SentimentAnalyzer()
         processor = MathProcessor()
@@ -82,7 +70,7 @@ def main():
                     'total_posts_analyzed': 0,
                     'timeframe': config['timeframe'],
                     'subreddits_analyzed': config['subreddits'],
-                    'error': 'No data collected. Possible authentication error.'
+                    'error': 'No data collected'
                 }
             }
         else:

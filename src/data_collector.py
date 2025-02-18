@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 from apify_client import ApifyClient
 import os
 import pandas as pd
+import json
 
 class RedditDataCollector:
     def __init__(self, config):
@@ -21,6 +22,9 @@ class RedditDataCollector:
         # Store config
         self.config = config
         self.retry_delay = 5
+        self.headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
         
         # Initialize Apify client
         self._initialize_apify_client()
@@ -58,12 +62,7 @@ class RedditDataCollector:
             # Construct URL based on timeframe
             url = f"https://old.reddit.com/r/{subreddit_name}/top/?t={timeframe}"
             
-            # Add custom headers
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
-            
-            response = requests.get(url, proxies=self.proxies, headers=headers, timeout=30)
+            response = requests.get(url, proxies=self.proxies, headers=self.headers, timeout=30)
             self.logger.debug(f"Response status: {response.status_code}")
             
             if response.status_code == 200:
@@ -107,42 +106,42 @@ class RedditDataCollector:
         return posts
 
     def collect_data(self):
-        """Collect data using web scraping with retries"""
-        try:
-            all_posts = []
-            
-            for subreddit_name in self.config['subreddits']:
-                self.logger.info(f"\n📥 Collecting data from r/{subreddit_name}")
+        """Collect data using direct JSON endpoints instead of API"""
+        subreddits = self.config.get('subreddits', ['wallstreetbets', 'stocks', 'investing'])
+        timeframe = self.config.get('timeframe', 'week')
+        post_limit = self.config.get('postLimit', 100)
+        
+        all_posts = []
+        for subreddit in subreddits:
+            try:
+                # Use the JSON endpoint
+                url = f"https://www.reddit.com/r/{subreddit}/top.json?t={timeframe}&limit={post_limit}"
+                response = requests.get(url, headers=self.headers)
                 
-                retries = 3
-                while retries > 0:
-                    try:
-                        posts = self._scrape_subreddit_posts(
-                            subreddit_name,
-                            self.config['timeframe'],
-                            self.config['postLimit']
-                        )
-                        
-                        if posts:
-                            all_posts.extend(posts)
-                            self.logger.info(f"✅ Successfully collected {len(posts)} posts from r/{subreddit_name}")
-                            break
-                        else:
-                            retries -= 1
-                            self.logger.warning(f"⚠️ No posts collected, retries left: {retries}")
-                            time.sleep(self.retry_delay)
-                            
-                    except Exception as e:
-                        retries -= 1
-                        self.logger.error(f"❌ Error collecting data: {e}, retries left: {retries}")
-                        time.sleep(self.retry_delay)
-                        
-                # Add delay between subreddits
-                time.sleep(2)
-            
-            return pd.DataFrame(all_posts)
-            
-        except Exception as e:
-            self.logger.error(f"❌ Data collection failed: {e}")
-            self.logger.exception("Full traceback:")
-            return pd.DataFrame()
+                if response.status_code == 200:
+                    data = response.json()
+                    posts = data['data']['children']
+                    
+                    for post in posts:
+                        post_data = post['data']
+                        all_posts.append({
+                            'title': post_data.get('title', ''),
+                            'selftext': post_data.get('selftext', ''),
+                            'score': post_data.get('score', 0),
+                            'created_utc': datetime.fromtimestamp(post_data.get('created_utc', 0)),
+                            'comments': post_data.get('num_comments', 0),
+                            'subreddit': post_data.get('subreddit', ''),
+                            'url': post_data.get('url', ''),
+                            'author': post_data.get('author', '[deleted]')
+                        })
+                    
+                    # Rate limiting to avoid getting blocked
+                    time.sleep(2)
+                else:
+                    print(f"Error accessing r/{subreddit}: Status code {response.status_code}")
+                    
+            except Exception as e:
+                print(f"Error collecting data from r/{subreddit}: {str(e)}")
+                continue
+                
+        return pd.DataFrame(all_posts) if all_posts else pd.DataFrame()

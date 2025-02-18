@@ -1,44 +1,31 @@
 {
-    "title": "Reddit Scraper Input",
-    "description": "Configuration for scraping Reddit posts using residential proxies",
+    "title": "Reddit Sentiment Analyzer Input",
     "type": "object",
     "schemaVersion": 1,
     "properties": {
         "subreddits": {
             "title": "Subreddits",
             "type": "array",
-            "description": "List of subreddit names to scrape (without 'r/')",
-            "editor": "stringList",
-            "uniqueItems": true,
-            "minItems": 1,
-            "maxItems": 20
+            "description": "List of subreddits to analyze",
+            "default": ["wallstreetbets", "stocks", "investing"],
+            "items": {
+                "type": "string"
+            }
         },
         "timeframe": {
             "title": "Time Frame",
             "type": "string",
-            "description": "Time frame for top posts",
-            "enum": ["hour", "day", "week", "month", "year", "all"],
+            "description": "Time frame for data collection",
             "default": "week",
-            "enumTitles": ["Past Hour", "Past 24 Hours", "Past Week", "Past Month", "Past Year", "All Time"]
+            "enum": ["hour", "day", "week", "month", "year", "all"]
         },
         "postLimit": {
             "title": "Post Limit",
             "type": "integer",
             "description": "Maximum number of posts to collect per subreddit",
+            "default": 100,
             "minimum": 1,
-            "maximum": 100,
-            "default": 25
-        },
-        "proxyConfig": {
-            "title": "Proxy Configuration",
-            "type": "object",
-            "description": "Configuration for Apify residential proxies",
-            "editor": "json",
-            "default": {
-                "useApifyProxy": true,
-                "apifyProxyGroups": ["RESIDENTIAL"],
-                "countryCode": "US"
-            }
+            "maximum": 1000
         }
     },
     "required": ["subreddits"]
