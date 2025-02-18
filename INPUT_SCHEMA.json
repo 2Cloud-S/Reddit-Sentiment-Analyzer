@@ -6,7 +6,8 @@
         "subreddits": {
             "title": "Subreddits",
             "type": "array",
-            "description": "List of subreddits to analyze",
+            "description": "Select one or more subreddits to analyze. The analyzer will collect and analyze posts from these communities.",
+            "editor": "stringList",
             "default": ["wallstreetbets", "stocks", "investing"],
             "items": {
                 "type": "string",
@@ -16,14 +17,16 @@
         "timeframe": {
             "title": "Time Frame",
             "type": "string",
-            "description": "Time frame for data collection",
+            "description": "Select the time period for data collection. This determines how far back to collect posts.",
+            "editor": "select",
             "default": "week",
             "enum": ["hour", "day", "week", "month", "year", "all"]
         },
         "postLimit": {
             "title": "Post Limit",
             "type": "integer",
-            "description": "Maximum number of posts to collect per subreddit",
+            "description": "Maximum number of posts to collect per subreddit. Higher values will provide more data but increase processing time.",
+            "editor": "number",
             "default": 100,
             "minimum": 1,
             "maximum": 1000
