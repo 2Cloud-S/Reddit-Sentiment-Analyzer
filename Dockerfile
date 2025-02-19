@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     iputils-ping \
     net-tools \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Create and activate virtual environment
@@ -30,20 +31,19 @@ RUN python -c "import nltk; \
     nltk.download('averaged_perceptron_tagger', download_dir='$NLTK_DATA'); \
     nltk.download('vader_lexicon', download_dir='$NLTK_DATA')"
 
-# Verify NLTK data installation with proper path
-RUN python -c "import nltk; \
-    import os; \
-    nltk.data.path.append('$NLTK_DATA'); \
-    print('NLTK data path:', nltk.data.path); \
-    print('VADER lexicon path:', os.path.join('$NLTK_DATA', 'sentiment/vader_lexicon.zip')); \
-    assert os.path.exists(os.path.join('$NLTK_DATA', 'sentiment/vader_lexicon.zip')), 'VADER lexicon not found'; \
-    print('VADER lexicon verified successfully')"
-
 # Download spaCy model
 RUN python -m spacy download en_core_web_sm
 
 # Final stage
 FROM python:3.12-slim
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    iputils-ping \
+    net-tools \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy virtual environment
 COPY --from=builder /opt/venv /opt/venv
@@ -62,11 +62,16 @@ COPY . .
 # Add logging configuration
 ENV PYTHONUNBUFFERED=1
 
-# Add this before the final verification
+# Set DNS configuration
+RUN echo "nameserver 8.8.8.8" > /etc/resolv.conf && \
+    echo "nameserver 8.8.4.4" >> /etc/resolv.conf
+
+# Verify network connectivity and DNS resolution
 RUN echo "Testing network connectivity..." && \
-    ping -c 1 reddit.com || echo "Ping failed" && \
-    curl -I https://www.reddit.com || echo "Curl failed" && \
-    netstat -tulpn || echo "Netstat failed"
+    ping -c 1 8.8.8.8 || echo "Ping failed" && \
+    curl -I https://old.reddit.com || echo "Curl failed" && \
+    netstat -tulpn || echo "Netstat failed" && \
+    python -c "import requests; print('Testing Reddit connection:', requests.get('https://old.reddit.com').status_code)"
 
 # Update the verification script
 RUN python -c "import nltk; \
