@@ -60,8 +60,8 @@ class RedditDataCollector:
             # Configure retry strategy
             retry_strategy = Retry(
                 total=3,
-                backoff_factor=0.5,
-                status_forcelist=[429, 500, 502, 503, 504],
+                backoff_factor=1,
+                status_forcelist=[403, 429, 500, 502, 503, 504],
             )
             
             # Mount adapter with retry strategy
@@ -69,40 +69,55 @@ class RedditDataCollector:
             self.session.mount("http://", adapter)
             self.session.mount("https://", adapter)
             
-            # Update headers
+            # Update headers with more Reddit-specific values
+            self.headers.update({
+                'Accept': 'application/json',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Connection': 'keep-alive',
+                'DNT': '1',
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache',
+                'Sec-Fetch-Dest': 'empty',
+                'Sec-Fetch-Mode': 'cors',
+                'Sec-Fetch-Site': 'same-origin',
+            })
             self.session.headers.update(self.headers)
             
             # Get proxy configuration from input
             proxy_config = self.config.get('proxyConfiguration', {})
             
-            if proxy_config.get('useApifyProxy', False):
-                # Configure proxy using Apify client
-                apify_client = ApifyClient()
-                proxy_configuration = apify_client.proxy.create_proxy_configuration(
-                    proxy_config
-                )
-                
-                if proxy_configuration:
-                    proxy_url = proxy_configuration.new_url()
-                    self.proxies = {
-                        'http': proxy_url,
-                        'https': proxy_url
-                    }
-                    self.session.proxies.update(self.proxies)
-                    self.logger.info("✅ Session initialized with Apify proxy configuration")
+            if proxy_config.get('useApifyProxy', True):  # Default to True if not specified
+                try:
+                    # Configure proxy using Apify client
+                    apify_client = ApifyClient()
+                    proxy_configuration = apify_client.proxy.create_proxy_configuration(
+                        groups=proxy_config.get('groups', ['RESIDENTIAL']),
+                        country_code=proxy_config.get('countryCode', 'US')
+                    )
                     
-                    # Test proxy connection
-                    self._test_proxy_connection()
-                else:
-                    self.logger.warning("⚠️ Failed to create Apify proxy configuration")
+                    if proxy_configuration:
+                        proxy_url = proxy_configuration.new_url()
+                        self.proxies = {
+                            'http': proxy_url,
+                            'https': proxy_url
+                        }
+                        self.session.proxies.update(self.proxies)
+                        self.logger.info("✅ Session initialized with Apify proxy configuration")
+                        
+                        # Test proxy connection
+                        self._test_proxy_connection()
+                    else:
+                        raise Exception("Failed to create proxy configuration")
+                except Exception as e:
+                    self.logger.error(f"❌ Apify proxy configuration failed: {e}")
+                    raise
             else:
-                self.logger.info("ℹ️ Apify proxy is disabled in configuration")
+                self.logger.warning("⚠️ Running without proxy - this may result in blocked requests")
             
         except Exception as e:
             self.logger.error(f"❌ Session initialization failed: {e}")
-            self.logger.warning("⚠️ Continuing without proxy configuration")
-            self.session = requests.Session()
-            self.session.headers.update(self.headers)
+            raise  # Re-raise the exception to handle it in the calling code
     
     def _test_proxy_connection(self):
         """Test proxy connection with a simple request"""
