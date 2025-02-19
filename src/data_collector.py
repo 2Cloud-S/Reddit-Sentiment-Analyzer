@@ -8,6 +8,7 @@ import os
 import pandas as pd
 import json
 import random
+import urllib.parse
 
 class RedditDataCollector:
     def __init__(self, config):
@@ -43,41 +44,39 @@ class RedditDataCollector:
             'Cache-Control': 'max-age=0'
         }
         
-        # Initialize Apify client
-        self._initialize_apify_client()
+        # Initialize session and proxy configuration
+        self._initialize_session()
         
-    def _initialize_apify_client(self):
-        """Initialize Apify client with residential proxies"""
-        self.logger.info("\n=== Apify Client Initialization ===")
+    def _initialize_session(self):
+        """Initialize session with proxy configuration if available"""
+        self.logger.info("\n=== Session Initialization ===")
         try:
-            self.apify_client = ApifyClient(os.environ['APIFY_TOKEN'])
-            
-            # Create a new proxy configuration
-            self.proxy_configuration = {
-                "useApifyProxy": True,
-                "groups": ["RESIDENTIAL"],
-                "countryCode": "US"
-            }
-            
-            # Get proxy URL from Apify
-            proxy_info = self.apify_client.proxy.get_proxy_url(self.proxy_configuration)
-            self.proxies = {
-                'http': proxy_info,
-                'https': proxy_info
-            }
-            
-            # Initialize session with proxy rotation
+            # Initialize session
             self.session = requests.Session()
             self.session.headers.update(self.headers)
-            self.session.proxies.update(self.proxies)
             
-            # Log success
-            self.logger.info("✅ Apify client initialized with residential proxies")
+            # Try to get Apify proxy if available
+            if 'APIFY_PROXY_PASSWORD' in os.environ:
+                proxy_password = os.environ['APIFY_PROXY_PASSWORD']
+                proxy_host = os.environ.get('APIFY_PROXY_HOST', 'proxy.apify.com')
+                proxy_port = os.environ.get('APIFY_PROXY_PORT', '8000')
+                
+                # Construct proxy URL with residential group
+                proxy_url = f"http://auto:{proxy_password}@{proxy_host}:{proxy_port}"
+                
+                self.proxies = {
+                    'http': proxy_url,
+                    'https': proxy_url
+                }
+                self.session.proxies.update(self.proxies)
+                self.logger.info("✅ Session initialized with Apify residential proxy")
+            else:
+                self.logger.warning("⚠️ No Apify proxy configuration found, proceeding without proxy")
             
         except Exception as e:
-            self.logger.error(f"❌ Apify client initialization failed: {e}")
-            raise
-
+            self.logger.error(f"❌ Session initialization failed: {e}")
+            self.logger.warning("⚠️ Continuing without proxy configuration")
+            
     def collect_data(self):
         """Collect data using direct JSON endpoints with improved error handling and retries"""
         subreddits = self.config.get('subreddits', ['wallstreetbets', 'stocks', 'investing'])
@@ -98,7 +97,7 @@ class RedditDataCollector:
                     url = f"https://old.reddit.com/r/{subreddit}/top.json?t={timeframe}&limit={post_limit}"
                     self.logger.info(f"Fetching data from: {url}")
                     
-                    response = self.session.get(url)
+                    response = self.session.get(url, timeout=30)
                     self.logger.debug(f"Response status: {response.status_code}")
                     
                     if response.status_code == 200:
