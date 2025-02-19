@@ -3,6 +3,18 @@
     "type": "object",
     "schemaVersion": 1,
     "properties": {
+        "proxyConfiguration": {
+            "title": "Proxy Configuration",
+            "type": "object",
+            "description": "Configure Apify proxy settings for data collection. Using a proxy is recommended to avoid rate limiting.",
+            "editor": "proxy",
+            "default": {
+                "useApifyProxy": true
+            },
+            "prefill": {
+                "useApifyProxy": true
+            }
+        },
         "subreddits": {
             "title": "Subreddits",
             "type": "array",
@@ -35,5 +47,5 @@
             "maximum": 1000
         }
     },
-    "required": ["subreddits"]
+    "required": ["subreddits", "proxyConfiguration"]
 } 

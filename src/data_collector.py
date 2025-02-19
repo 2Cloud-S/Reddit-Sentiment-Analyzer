@@ -3,12 +3,14 @@ import time
 from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
-from apify_client import ApifyClient
 import os
 import pandas as pd
 import json
 import random
 import urllib.parse
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+from apify_client import ApifyClient
 
 class RedditDataCollector:
     def __init__(self, config):
@@ -24,6 +26,7 @@ class RedditDataCollector:
         # Store config
         self.config = config
         self.retry_delay = 5
+        self.max_retries = 3
         
         # List of user agents to rotate
         self.user_agents = [
@@ -36,107 +39,151 @@ class RedditDataCollector:
         # Initialize headers with random user agent
         self.headers = {
             'User-Agent': random.choice(self.user_agents),
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept': 'application/json,text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.5',
-            'Accept-Encoding': 'gzip, deflate, br',
+            'Accept-Encoding': 'gzip, deflate',
             'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-            'Cache-Control': 'max-age=0'
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
         }
         
-        # Initialize session and proxy configuration
+        # Initialize session with retries
         self._initialize_session()
         
     def _initialize_session(self):
-        """Initialize session with proxy configuration if available"""
+        """Initialize session with proxy configuration and retries"""
         self.logger.info("\n=== Session Initialization ===")
         try:
-            # Initialize session
+            # Initialize session with retry strategy
             self.session = requests.Session()
+            
+            # Configure retry strategy
+            retry_strategy = Retry(
+                total=3,
+                backoff_factor=0.5,
+                status_forcelist=[429, 500, 502, 503, 504],
+            )
+            
+            # Mount adapter with retry strategy
+            adapter = HTTPAdapter(max_retries=retry_strategy)
+            self.session.mount("http://", adapter)
+            self.session.mount("https://", adapter)
+            
+            # Update headers
             self.session.headers.update(self.headers)
             
-            # Try to get Apify proxy if available
-            if 'APIFY_PROXY_PASSWORD' in os.environ:
-                proxy_password = os.environ['APIFY_PROXY_PASSWORD']
-                proxy_host = os.environ.get('APIFY_PROXY_HOST', 'proxy.apify.com')
-                proxy_port = os.environ.get('APIFY_PROXY_PORT', '8000')
+            # Get proxy configuration from input
+            proxy_config = self.config.get('proxyConfiguration', {})
+            
+            if proxy_config.get('useApifyProxy', False):
+                # Configure proxy using Apify client
+                apify_client = ApifyClient()
+                proxy_configuration = apify_client.proxy.create_proxy_configuration(
+                    proxy_config
+                )
                 
-                # Construct proxy URL with residential group
-                proxy_url = f"http://auto:{proxy_password}@{proxy_host}:{proxy_port}"
-                
-                self.proxies = {
-                    'http': proxy_url,
-                    'https': proxy_url
-                }
-                self.session.proxies.update(self.proxies)
-                self.logger.info("✅ Session initialized with Apify residential proxy")
+                if proxy_configuration:
+                    proxy_url = proxy_configuration.new_url()
+                    self.proxies = {
+                        'http': proxy_url,
+                        'https': proxy_url
+                    }
+                    self.session.proxies.update(self.proxies)
+                    self.logger.info("✅ Session initialized with Apify proxy configuration")
+                    
+                    # Test proxy connection
+                    self._test_proxy_connection()
+                else:
+                    self.logger.warning("⚠️ Failed to create Apify proxy configuration")
             else:
-                self.logger.warning("⚠️ No Apify proxy configuration found, proceeding without proxy")
+                self.logger.info("ℹ️ Apify proxy is disabled in configuration")
             
         except Exception as e:
             self.logger.error(f"❌ Session initialization failed: {e}")
             self.logger.warning("⚠️ Continuing without proxy configuration")
+            self.session = requests.Session()
+            self.session.headers.update(self.headers)
+    
+    def _test_proxy_connection(self):
+        """Test proxy connection with a simple request"""
+        try:
+            test_url = "https://httpbin.org/ip"
+            response = self.session.get(test_url, timeout=10)
+            if response.status_code == 200:
+                self.logger.info(f"✅ Proxy connection test successful: {response.json()}")
+            else:
+                self.logger.warning(f"⚠️ Proxy test returned status code: {response.status_code}")
+        except Exception as e:
+            self.logger.error(f"❌ Proxy connection test failed: {e}")
             
+    def _make_request(self, url, retries=3):
+        """Make a request with automatic retry and proxy rotation"""
+        for attempt in range(retries):
+            try:
+                # Rotate user agent
+                self.session.headers.update({'User-Agent': random.choice(self.user_agents)})
+                
+                # Make request with shorter timeout
+                response = self.session.get(url, timeout=15)
+                
+                if response.status_code == 200:
+                    return response
+                elif response.status_code == 429:
+                    wait_time = int(response.headers.get('Retry-After', self.retry_delay))
+                    self.logger.warning(f"Rate limited. Waiting {wait_time} seconds before retry {attempt + 1}/{retries}")
+                    time.sleep(wait_time)
+                else:
+                    self.logger.warning(f"Request failed with status {response.status_code}, attempt {attempt + 1}/{retries}")
+                    time.sleep(self.retry_delay)
+                    
+            except requests.exceptions.ProxyError as e:
+                self.logger.error(f"Proxy error on attempt {attempt + 1}: {e}")
+                if attempt == retries - 1:
+                    self.logger.warning("Attempting request without proxy...")
+                    self.session.proxies = {}  # Remove proxy for final attempt
+                time.sleep(self.retry_delay)
+                
+            except requests.exceptions.RequestException as e:
+                self.logger.error(f"Request error on attempt {attempt + 1}: {e}")
+                time.sleep(self.retry_delay)
+                
+        return None
+        
     def collect_data(self):
-        """Collect data using direct JSON endpoints with improved error handling and retries"""
+        """Collect data using direct JSON endpoints with improved error handling"""
         subreddits = self.config.get('subreddits', ['wallstreetbets', 'stocks', 'investing'])
         timeframe = self.config.get('timeframe', 'week')
         post_limit = self.config.get('postLimit', 100)
         
         all_posts = []
         for subreddit in subreddits:
-            max_retries = 3
-            retry_count = 0
+            # Use old.reddit.com for better compatibility
+            url = f"https://old.reddit.com/r/{subreddit}/top.json?t={timeframe}&limit={post_limit}"
+            self.logger.info(f"Fetching data from: {url}")
             
-            while retry_count < max_retries:
+            response = self._make_request(url)
+            if response:
                 try:
-                    # Rotate user agent
-                    self.session.headers.update({'User-Agent': random.choice(self.user_agents)})
+                    data = response.json()
+                    posts = data['data']['children']
                     
-                    # Use old.reddit.com for better compatibility
-                    url = f"https://old.reddit.com/r/{subreddit}/top.json?t={timeframe}&limit={post_limit}"
-                    self.logger.info(f"Fetching data from: {url}")
+                    for post in posts:
+                        post_data = post['data']
+                        all_posts.append({
+                            'title': post_data.get('title', ''),
+                            'selftext': post_data.get('selftext', ''),
+                            'score': post_data.get('score', 0),
+                            'created_utc': datetime.fromtimestamp(post_data.get('created_utc', 0)),
+                            'comments': post_data.get('num_comments', 0),
+                            'subreddit': post_data.get('subreddit', ''),
+                            'url': post_data.get('url', ''),
+                            'author': post_data.get('author', '[deleted]')
+                        })
                     
-                    response = self.session.get(url, timeout=30)
-                    self.logger.debug(f"Response status: {response.status_code}")
-                    
-                    if response.status_code == 200:
-                        data = response.json()
-                        posts = data['data']['children']
-                        
-                        for post in posts:
-                            post_data = post['data']
-                            all_posts.append({
-                                'title': post_data.get('title', ''),
-                                'selftext': post_data.get('selftext', ''),
-                                'score': post_data.get('score', 0),
-                                'created_utc': datetime.fromtimestamp(post_data.get('created_utc', 0)),
-                                'comments': post_data.get('num_comments', 0),
-                                'subreddit': post_data.get('subreddit', ''),
-                                'url': post_data.get('url', ''),
-                                'author': post_data.get('author', '[deleted]')
-                            })
-                        
-                        self.logger.info(f"Successfully collected {len(posts)} posts from r/{subreddit}")
-                        break  # Success, exit retry loop
-                        
-                    elif response.status_code == 429:  # Too Many Requests
-                        retry_count += 1
-                        wait_time = int(response.headers.get('Retry-After', self.retry_delay))
-                        self.logger.warning(f"Rate limited. Waiting {wait_time} seconds before retry {retry_count}/{max_retries}")
-                        time.sleep(wait_time)
-                        
-                    else:
-                        self.logger.error(f"Error accessing r/{subreddit}: Status code {response.status_code}")
-                        retry_count += 1
-                        time.sleep(self.retry_delay)
-                        
+                    self.logger.info(f"Successfully collected {len(posts)} posts from r/{subreddit}")
                 except Exception as e:
-                    self.logger.error(f"Error collecting data from r/{subreddit}: {str(e)}")
-                    retry_count += 1
-                    time.sleep(self.retry_delay)
-                    continue
-                
+                    self.logger.error(f"Error processing data from r/{subreddit}: {str(e)}")
+            
             # Respect rate limits between subreddits
             time.sleep(2)
                 
