@@ -12,6 +12,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from apify_client import ApifyClient
 from apify import Actor
+import asyncio
 
 class RedditDataCollector:
     def __init__(self, config):
@@ -140,7 +141,7 @@ class RedditDataCollector:
                 
         return None
         
-    def collect_data(self):
+    async def collect_data(self):
         """Collect data using direct JSON endpoints with improved error handling"""
         subreddits = self.config.get('subreddits', ['wallstreetbets', 'stocks', 'investing'])
         timeframe = self.config.get('timeframe', 'week')
@@ -152,7 +153,7 @@ class RedditDataCollector:
             url = f"https://old.reddit.com/r/{subreddit}/top.json?t={timeframe}&limit={post_limit}"
             self.logger.info(f"Fetching data from: {url}")
             
-            response = self._make_request(url)
+            response = await self._make_request(url)  # Ensure this is awaited if it's async
             if response:
                 try:
                     data = response.json()
@@ -176,7 +177,7 @@ class RedditDataCollector:
                     self.logger.error(f"Error processing data from r/{subreddit}: {str(e)}")
             
             # Respect rate limits between subreddits
-            time.sleep(2)
+            await asyncio.sleep(2)  # Use asyncio.sleep for async delay
                 
         return pd.DataFrame(all_posts) if all_posts else pd.DataFrame()
 
