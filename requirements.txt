@@ -26,4 +26,5 @@ contractions>=0.1.73
 textstat>=0.7.3
 apify-client>=1.4.0
 pyyaml>=6.0.1
-lxml>=4.9.3 
+lxml>=4.9.3
+apify>=0.2.0 
