@@ -8,6 +8,7 @@ from src.visualizer import Visualizer
 from src.topic_processor import TopicProcessor
 from datetime import datetime
 import re
+import asyncio  # Import asyncio for async handling
 
 def verify_nltk_setup():
     """Verify NLTK setup and VADER lexicon availability"""
@@ -28,7 +29,7 @@ def verify_nltk_setup():
         print(f"❌ NLTK setup verification failed: {str(e)}")
         return False
 
-def main():
+async def main():
     # Initialize the Apify client
     client = ApifyClient(os.environ['APIFY_TOKEN'])
     
@@ -53,13 +54,14 @@ def main():
         
         # Initialize components
         collector = RedditDataCollector(config)
+        await collector._initialize_session()  # Await the session initialization
         analyzer = SentimentAnalyzer()
         processor = MathProcessor()
         visualizer = Visualizer()
         
         # Collect and process data
         print("Collecting Reddit data...")
-        df = collector.collect_data()
+        df = await collector.collect_data()  # Ensure this is awaited if it's async
         
         if df.empty:
             print("Warning: No data collected")
@@ -117,4 +119,4 @@ def main():
         raise
 
 if __name__ == "__main__":
-    main() 
+    asyncio.run(main())  # Use asyncio to run the main function 
