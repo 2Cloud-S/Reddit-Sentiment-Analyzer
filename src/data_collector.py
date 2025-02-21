@@ -179,3 +179,8 @@ class RedditDataCollector:
             time.sleep(2)
                 
         return pd.DataFrame(all_posts) if all_posts else pd.DataFrame()
+
+    async def main(self):
+        await self._initialize_session()
+        # Proceed with data collection after session initialization
+        df = await self.collect_data()
