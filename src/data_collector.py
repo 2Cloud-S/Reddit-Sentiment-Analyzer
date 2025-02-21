@@ -11,6 +11,7 @@ import urllib.parse
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from apify_client import ApifyClient
+from apify import Actor
 
 class RedditDataCollector:
     def __init__(self, config):
@@ -50,26 +51,19 @@ class RedditDataCollector:
         # Initialize session with retries
         self._initialize_session()
         
-    def _initialize_session(self):
+    async def _initialize_session(self):
         """Initialize session with proxy configuration and retries"""
         self.logger.info("\n=== Session Initialization ===")
         try:
-            # Initialize session with retry strategy
             self.session = requests.Session()
-            
-            # Configure retry strategy
             retry_strategy = Retry(
                 total=3,
                 backoff_factor=1,
                 status_forcelist=[403, 429, 500, 502, 503, 504],
             )
-            
-            # Mount adapter with retry strategy
             adapter = HTTPAdapter(max_retries=retry_strategy)
             self.session.mount("http://", adapter)
             self.session.mount("https://", adapter)
-            
-            # Update headers with more Reddit-specific values
             self.headers.update({
                 'Accept': 'application/json',
                 'Accept-Language': 'en-US,en;q=0.5',
@@ -83,38 +77,20 @@ class RedditDataCollector:
                 'Sec-Fetch-Site': 'same-origin',
             })
             self.session.headers.update(self.headers)
-            
-            # Get proxy configuration from input
-            proxy_config = self.config.get('proxyConfiguration', {})
-            
-            if proxy_config.get('useApifyProxy', True):  # Default to True if not specified
-                try:
-                    # Configure proxy using Apify client
-                    apify_client = ApifyClient()
-                    proxy_configuration = apify_client.proxy.create_proxy_configuration(
-                        groups=proxy_config.get('groups', ['RESIDENTIAL']),
-                        country_code=proxy_config.get('countryCode', 'US')
-                    )
-                    
-                    if proxy_configuration:
-                        proxy_url = proxy_configuration.new_url()
-                        self.proxies = {
-                            'http': proxy_url,
-                            'https': proxy_url
-                        }
-                        self.session.proxies.update(self.proxies)
-                        self.logger.info("✅ Session initialized with Apify proxy configuration")
-                        
-                        # Test proxy connection
-                        self._test_proxy_connection()
-                    else:
-                        raise Exception("Failed to create proxy configuration")
-                except Exception as e:
-                    self.logger.error(f"❌ Apify proxy configuration failed: {e}")
-                    raise
+            actor_input = await Actor.get_input() or {}
+            proxy_settings = actor_input.get('proxyConfiguration')
+            proxy_configuration = await Actor.create_proxy_configuration(actor_proxy_input=proxy_settings)
+            if proxy_configuration:
+                proxy_url = await proxy_configuration.new_url()
+                self.proxies = {
+                    'http': proxy_url,
+                    'https': proxy_url
+                }
+                self.session.proxies.update(self.proxies)
+                self.logger.info("✅ Session initialized with Apify proxy configuration")
+                self._test_proxy_connection()
             else:
-                self.logger.warning("⚠️ Running without proxy - this may result in blocked requests")
-            
+                raise Exception("Failed to create proxy configuration")
         except Exception as e:
             self.logger.error(f"❌ Session initialization failed: {e}")
             raise  # Re-raise the exception to handle it in the calling code
