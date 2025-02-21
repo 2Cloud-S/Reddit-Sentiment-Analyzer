@@ -13,6 +13,7 @@ from urllib3.util.retry import Retry
 from apify_client import ApifyClient
 from apify import Actor
 import asyncio
+import aiohttp
 
 class RedditDataCollector:
     def __init__(self, config):
@@ -55,90 +56,21 @@ class RedditDataCollector:
     async def _initialize_session(self):
         """Initialize session with proxy configuration and retries"""
         self.logger.info("\n=== Session Initialization ===")
-        try:
-            self.session = requests.Session()
-            retry_strategy = Retry(
-                total=3,
-                backoff_factor=1,
-                status_forcelist=[403, 429, 500, 502, 503, 504],
-            )
-            adapter = HTTPAdapter(max_retries=retry_strategy)
-            self.session.mount("http://", adapter)
-            self.session.mount("https://", adapter)
-            self.headers.update({
-                'Accept': 'application/json',
-                'Accept-Language': 'en-US,en;q=0.5',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'Connection': 'keep-alive',
-                'DNT': '1',
-                'Cache-Control': 'no-cache',
-                'Pragma': 'no-cache',
-                'Sec-Fetch-Dest': 'empty',
-                'Sec-Fetch-Mode': 'cors',
-                'Sec-Fetch-Site': 'same-origin',
-            })
-            self.session.headers.update(self.headers)
-            actor_input = await Actor.get_input() or {}
-            proxy_settings = actor_input.get('proxyConfiguration')
-            proxy_configuration = await Actor.create_proxy_configuration(actor_proxy_input=proxy_settings)
-            if proxy_configuration:
-                proxy_url = await proxy_configuration.new_url()
-                self.proxies = {
-                    'http': proxy_url,
-                    'https': proxy_url
-                }
-                self.session.proxies.update(self.proxies)
-                self.logger.info("✅ Session initialized with Apify proxy configuration")
-                self._test_proxy_connection()
-            else:
-                raise Exception("Failed to create proxy configuration")
-        except Exception as e:
-            self.logger.error(f"❌ Session initialization failed: {e}")
-            raise  # Re-raise the exception to handle it in the calling code
-    
-    def _test_proxy_connection(self):
-        """Test proxy connection with a simple request"""
-        try:
-            test_url = "https://httpbin.org/ip"
-            response = self.session.get(test_url, timeout=10)
-            if response.status_code == 200:
-                self.logger.info(f"✅ Proxy connection test successful: {response.json()}")
-            else:
-                self.logger.warning(f"⚠️ Proxy test returned status code: {response.status_code}")
-        except Exception as e:
-            self.logger.error(f"❌ Proxy connection test failed: {e}")
-            
-    async def _make_request(self, url, retries=3):
-        """Make a request with automatic retry and proxy rotation"""
-        for attempt in range(retries):
+        self.session = aiohttp.ClientSession()
+        self.logger.info("✅ Session initialized")
+        
+    async def _make_request(self, url):
+        """Make a request with automatic retry and user agent rotation"""
+        for attempt in range(3):
             try:
-                # Rotate user agent
-                self.session.headers.update({'User-Agent': random.choice(self.user_agents)})
-                
-                # Make request with shorter timeout
-                response = await self.session.get(url, timeout=15)  # Await the request
-                
-                if response.status_code == 200:
-                    return response
-                elif response.status_code == 429:
-                    wait_time = int(response.headers.get('Retry-After', self.retry_delay))
-                    self.logger.warning(f"Rate limited. Waiting {wait_time} seconds before retry {attempt + 1}/{retries}")
-                    await asyncio.sleep(wait_time)  # Use asyncio.sleep for async delay
-                else:
-                    self.logger.warning(f"Request failed with status {response.status_code}, attempt {attempt + 1}/{retries}")
-                    await asyncio.sleep(self.retry_delay)  # Use asyncio.sleep for async delay
-                    
-            except requests.exceptions.ProxyError as e:
-                self.logger.error(f"Proxy error on attempt {attempt + 1}: {e}")
-                if attempt == retries - 1:
-                    self.logger.warning("Attempting request without proxy...")
-                    self.session.proxies = {}  # Remove proxy for final attempt
-                await asyncio.sleep(self.retry_delay)  # Use asyncio.sleep for async delay
-                
-            except requests.exceptions.RequestException as e:
+                headers = {'User-Agent': random.choice(self.user_agents)}
+                async with self.session.get(url, headers=headers) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    else:
+                        self.logger.warning(f"Request failed with status {response.status}, attempt {attempt + 1}/3")
+            except Exception as e:
                 self.logger.error(f"Request error on attempt {attempt + 1}: {e}")
-                await asyncio.sleep(self.retry_delay)  # Use asyncio.sleep for async delay
-                
         return None
         
     async def collect_data(self):
@@ -153,11 +85,10 @@ class RedditDataCollector:
             url = f"https://old.reddit.com/r/{subreddit}/top.json?t={timeframe}&limit={post_limit}"
             self.logger.info(f"Fetching data from: {url}")
             
-            response = await self._make_request(url)  # Ensure this is awaited if it's async
+            response = await self._make_request(url)
             if response:
                 try:
-                    data = response.json()
-                    posts = data['data']['children']
+                    posts = response['data']['children']
                     
                     for post in posts:
                         post_data = post['data']
@@ -185,3 +116,4 @@ class RedditDataCollector:
         await self._initialize_session()
         # Proceed with data collection after session initialization
         df = await self.collect_data()
+        await self.session.close()  # Close the session when done
