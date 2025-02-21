@@ -108,7 +108,7 @@ class RedditDataCollector:
         except Exception as e:
             self.logger.error(f"❌ Proxy connection test failed: {e}")
             
-    def _make_request(self, url, retries=3):
+    async def _make_request(self, url, retries=3):
         """Make a request with automatic retry and proxy rotation"""
         for attempt in range(retries):
             try:
@@ -116,28 +116,28 @@ class RedditDataCollector:
                 self.session.headers.update({'User-Agent': random.choice(self.user_agents)})
                 
                 # Make request with shorter timeout
-                response = self.session.get(url, timeout=15)
+                response = await self.session.get(url, timeout=15)  # Await the request
                 
                 if response.status_code == 200:
                     return response
                 elif response.status_code == 429:
                     wait_time = int(response.headers.get('Retry-After', self.retry_delay))
                     self.logger.warning(f"Rate limited. Waiting {wait_time} seconds before retry {attempt + 1}/{retries}")
-                    time.sleep(wait_time)
+                    await asyncio.sleep(wait_time)  # Use asyncio.sleep for async delay
                 else:
                     self.logger.warning(f"Request failed with status {response.status_code}, attempt {attempt + 1}/{retries}")
-                    time.sleep(self.retry_delay)
+                    await asyncio.sleep(self.retry_delay)  # Use asyncio.sleep for async delay
                     
             except requests.exceptions.ProxyError as e:
                 self.logger.error(f"Proxy error on attempt {attempt + 1}: {e}")
                 if attempt == retries - 1:
                     self.logger.warning("Attempting request without proxy...")
                     self.session.proxies = {}  # Remove proxy for final attempt
-                time.sleep(self.retry_delay)
+                await asyncio.sleep(self.retry_delay)  # Use asyncio.sleep for async delay
                 
             except requests.exceptions.RequestException as e:
                 self.logger.error(f"Request error on attempt {attempt + 1}: {e}")
-                time.sleep(self.retry_delay)
+                await asyncio.sleep(self.retry_delay)  # Use asyncio.sleep for async delay
                 
         return None
         
