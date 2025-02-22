@@ -57,8 +57,8 @@ class RedditDataCollector:
         if 'sessionCookies' in config and config['sessionCookies']:
             self.cookies = self._parse_cookie_string(config['sessionCookies'])
         
-        # Initialize session with retries
-        self._initialize_session()
+        # Initialize session variable
+        self.session = None
         
     def _parse_cookie_string(self, cookie_string):
         """Parse cookie string into a dictionary"""
