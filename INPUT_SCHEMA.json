@@ -6,50 +6,56 @@
         "proxyConfiguration": {
             "title": "Proxy Configuration",
             "type": "object",
-            "description": "Proxy settings are required for reliable Reddit data collection. Please configure the Apify proxy to avoid rate limiting and IP blocks.",
+            "description": "Proxy settings for reliable data collection",
             "editor": "proxy",
             "default": {
-                "useApifyProxy": true,
-                "groups": ["RESIDENTIAL"],
-                "countryCode": "US"
-            },
-            "prefill": {
-                "useApifyProxy": true,
-                "groups": ["RESIDENTIAL"],
-                "countryCode": "US"
+                "useApifyProxy": true
             }
         },
         "subreddits": {
             "title": "Subreddits",
             "type": "array",
-            "description": "Select one or more subreddits to analyze. The analyzer will collect and analyze posts from these communities.",
+            "description": "Select one or more subreddits to analyze",
             "editor": "select",
             "default": ["wallstreetbets", "stocks", "investing"],
             "items": {
                 "type": "string",
-                "enum": ["wallstreetbets", "stocks", "investing", "cryptocurrency", "finance", "stockmarket", "options", "pennystocks", "trading", "forex", "algotrading", "dividends", "etfs", "personalfinance", "economy"],
-                "enumTitles": ["r/wallstreetbets", "r/stocks", "r/investing", "r/cryptocurrency", "r/finance", "r/stockmarket", "r/options", "r/pennystocks", "r/trading", "r/forex", "r/algotrading", "r/dividends", "r/etfs", "r/personalfinance", "r/economy"]
+                "enum": ["wallstreetbets", "stocks", "investing"]
             },
             "uniqueItems": true
         },
         "timeframe": {
             "title": "Time Frame",
             "type": "string",
-            "description": "Select the time period for data collection. This determines how far back to collect posts.",
+            "description": "Select the time period for data collection",
             "editor": "select",
             "default": "week",
-            "enum": ["hour", "day", "week", "month", "year", "all"],
-            "enumTitles": ["Last Hour", "Last 24 Hours", "Last Week", "Last Month", "Last Year", "All Time"]
+            "enum": ["hour", "day", "week", "month", "year", "all"]
         },
         "postLimit": {
             "title": "Post Limit",
             "type": "integer",
-            "description": "Maximum number of posts to collect per subreddit. Higher values will provide more data but increase processing time.",
+            "description": "Maximum number of posts to collect per subreddit",
             "editor": "number",
             "default": 100,
             "minimum": 1,
             "maximum": 1000
+        },
+        "sessionCookies": {
+            "title": "Reddit Session Cookies",
+            "type": "string",
+            "description": "Paste your Reddit session cookies here (optional)",
+            "editor": "textfield",
+            "nullable": true
+        },
+        "customHeaders": {
+            "title": "Custom Headers",
+            "type": "object",
+            "description": "Additional HTTP headers to use in requests (optional)",
+            "editor": "json",
+            "default": {},
+            "nullable": true
         }
     },
-    "required": ["subreddits", "proxyConfiguration"]
+    "required": ["subreddits"]
 } 
