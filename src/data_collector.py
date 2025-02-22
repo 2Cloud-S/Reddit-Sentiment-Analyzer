@@ -32,6 +32,11 @@ class RedditDataCollector:
         self.retry_delay = 5
         self.max_retries = 3
         
+        # OAuth credentials
+        self.client_id = config['client_id']
+        self.client_secret = config['client_secret']
+        self.user_agent = config['user_agent']
+        
         # Default headers that mimic a real browser
         self.default_headers = {
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
@@ -78,71 +83,60 @@ class RedditDataCollector:
         return cookies
 
     async def _initialize_session(self):
-        """Initialize session with cookies and headers"""
+        """Initialize session with OAuth authentication"""
         self.logger.info("\n=== Session Initialization ===")
         
-        # Initialize session with cookie jar
-        cookie_jar = aiohttp.CookieJar(unsafe=True)
+        # Create a session with headers
         self.session = aiohttp.ClientSession(
-            cookie_jar=cookie_jar,
-            headers=self.default_headers
+            headers={
+                'User-Agent': self.user_agent
+            }
         )
         
-        # Add cookies to session if available
-        if self.cookies:
-            for key, value in self.cookies.items():
-                self.session.cookie_jar.update_cookies({key: value})
-                
-        self.logger.info("✅ Session initialized with cookies and headers")
+        # Authenticate and get access token
+        await self._authenticate()
         
-        # Test the session
-        await self._test_session()
-
-    async def _test_session(self):
-        """Test the session configuration"""
-        try:
-            async with self.session.get('https://old.reddit.com/api/v1/me.json') as response:
-                self.logger.info(f"Session test status: {response.status}")
-                if response.status == 200:
-                    self.logger.info("✅ Session authentication successful")
-                else:
-                    self.logger.warning("⚠️ Session authentication may not be optimal")
-        except Exception as e:
-            self.logger.error(f"Session test failed: {str(e)}")
-
-    async def _make_request(self, url, retries=3, delay=2):
-        """Make a request with automatic retry and error handling"""
-        for attempt in range(retries):
-            try:
-                async with self.session.get(url) as response:
-                    if response.status == 200:
-                        return await response.json()
-                    elif response.status == 403:
-                        self.logger.warning(f"Access forbidden (403) - Attempt {attempt + 1}/{retries}")
-                        if attempt < retries - 1:
-                            await asyncio.sleep(delay * (attempt + 1))  # Exponential backoff
-                    else:
-                        self.logger.warning(f"Request failed with status {response.status} - Attempt {attempt + 1}/{retries}")
-                        if attempt < retries - 1:
-                            await asyncio.sleep(delay)
-            except Exception as e:
-                self.logger.error(f"Request error on attempt {attempt + 1}: {str(e)}")
-                if attempt < retries - 1:
-                    await asyncio.sleep(delay)
-        return None
+    async def _authenticate(self):
+        """Authenticate with Reddit API using OAuth"""
+        auth = aiohttp.BasicAuth(self.client_id, self.client_secret)
+        data = {
+            'grant_type': 'client_credentials'
+        }
+        
+        async with self.session.post('https://www.reddit.com/api/v1/access_token', auth=auth, data=data) as response:
+            if response.status == 200:
+                token_info = await response.json()
+                self.access_token = token_info['access_token']
+                self.logger.info("✅ Authentication successful")
+            else:
+                self.logger.error(f"❌ Authentication failed: {response.status} {await response.text()}")
+                raise Exception("Authentication failed")
+        
+    async def _make_request(self, url):
+        """Make a request to the Reddit API"""
+        headers = {
+            'Authorization': f'bearer {self.access_token}',
+            'User-Agent': self.user_agent
+        }
+        
+        async with self.session.get(url, headers=headers) as response:
+            if response.status == 200:
+                return await response.json()
+            else:
+                self.logger.error(f"Request failed with status {response.status}: {await response.text()}")
+                return None
 
     async def collect_data(self):
-        """Collect data from Reddit with improved error handling"""
-        if not self.session:
-            await self._initialize_session()
-            
+        """Collect data from Reddit using the API"""
+        await self._initialize_session()
+        
         subreddits = self.config.get('subreddits', ['stocks'])
         timeframe = self.config.get('timeframe', 'day')
         post_limit = self.config.get('postLimit', 10)
         
         all_posts = []
         for subreddit in subreddits:
-            url = f"https://old.reddit.com/r/{subreddit}/top.json?t={timeframe}&limit={post_limit}"
+            url = f"https://oauth.reddit.com/r/{subreddit}/top.json?t={timeframe}&limit={post_limit}"
             self.logger.info(f"Fetching data from: {url}")
             
             response = await self._make_request(url)

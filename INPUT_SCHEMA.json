@@ -3,14 +3,26 @@
     "type": "object",
     "schemaVersion": 1,
     "properties": {
-        "proxyConfiguration": {
-            "title": "Proxy Configuration",
-            "type": "object",
-            "description": "Proxy settings for reliable data collection",
-            "editor": "proxy",
-            "default": {
-                "useApifyProxy": true
-            }
+        "client_id": {
+            "title": "Reddit Client ID",
+            "type": "string",
+            "description": "Your Reddit API Client ID",
+            "editor": "textfield",
+            "default": ""
+        },
+        "client_secret": {
+            "title": "Reddit Client Secret",
+            "type": "string",
+            "description": "Your Reddit API Client Secret",
+            "editor": "textfield",
+            "default": ""
+        },
+        "user_agent": {
+            "title": "User Agent",
+            "type": "string",
+            "description": "User agent string for the requests",
+            "editor": "textfield",
+            "default": "YourApp/1.0"
         },
         "subreddits": {
             "title": "Subreddits",
@@ -57,5 +69,5 @@
             "nullable": true
         }
     },
-    "required": ["subreddits"]
+    "required": ["client_id", "client_secret", "user_agent", "subreddits"]
 } 
