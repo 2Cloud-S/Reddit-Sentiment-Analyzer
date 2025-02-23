@@ -13,7 +13,8 @@
             "title": "Reddit Client Secret",
             "type": "string",
             "description": "Your Reddit API client secret",
-            "editor": "textfield"
+            "editor": "textfield",
+            "isSecret": true
         },
         "username": {
             "title": "Reddit Username",
@@ -31,22 +32,28 @@
         "userAgent": {
             "title": "User Agent",
             "type": "string",
-            "description": "Custom user agent string for Reddit API",
-            "default": "SentimentAnalyzer/1.0"
+            "description": "Custom user agent string for Reddit API (format: platform:app_id:version by /u/username)",
+            "default": "SentimentAnalyzer/1.0",
+            "editor": "textfield",
+            "prefill": "python:com.sentiment:1.0 (by /u/YOUR_USERNAME)"
         },
         "subreddits": {
             "title": "Subreddits",
             "type": "array",
             "description": "List of subreddits to analyze",
             "editor": "stringList",
-            "default": ["wallstreetbets", "stocks", "investing"]
+            "default": ["wallstreetbets", "stocks", "investing"],
+            "minItems": 1,
+            "maxItems": 10,
+            "uniqueItems": true
         },
         "timeframe": {
             "title": "Time Frame",
             "type": "string",
             "description": "Time frame for data collection",
             "enum": ["hour", "day", "week", "month", "year", "all"],
-            "default": "week"
+            "default": "week",
+            "editor": "select"
         },
         "postLimit": {
             "title": "Post Limit",
@@ -54,7 +61,9 @@
             "description": "Maximum number of posts to analyze per subreddit",
             "default": 100,
             "minimum": 1,
-            "maximum": 1000
+            "maximum": 1000,
+            "unit": "posts",
+            "editor": "number"
         }
     },
     "required": ["clientId", "clientSecret", "username", "password"]
