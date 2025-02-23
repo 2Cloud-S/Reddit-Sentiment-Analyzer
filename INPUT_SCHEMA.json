@@ -46,6 +46,7 @@
             "type": "string",
             "description": "Your Reddit API Client ID",
             "editor": "textfield",
+            "default": "",
             "required": true
         },
         "clientSecret": {
@@ -53,6 +54,7 @@
             "type": "string",
             "description": "Your Reddit API Client Secret",
             "editor": "textfield",
+            "default": "",
             "required": true
         },
         "userAgent": {
