@@ -3,67 +3,59 @@
     "type": "object",
     "schemaVersion": 1,
     "properties": {
-        "proxyConfiguration": {
-            "title": "Proxy Configuration",
-            "type": "object",
-            "description": "Proxy settings for reliable data collection",
-            "editor": "proxy",
-            "default": {
-                "useApifyProxy": true
-            }
-        },
-        "subreddits": {
-            "title": "Subreddits",
-            "type": "array",
-            "description": "Select one or more subreddits to analyze",
-            "editor": "select",
-            "default": ["wallstreetbets", "stocks", "investing"],
-            "items": {
-                "type": "string",
-                "enum": ["wallstreetbets", "stocks", "investing"]
-            },
-            "uniqueItems": true
-        },
-        "timeframe": {
-            "title": "Time Frame",
-            "type": "string",
-            "description": "Select the time period for data collection",
-            "editor": "select",
-            "default": "week",
-            "enum": ["hour", "day", "week", "month", "year", "all"]
-        },
-        "postLimit": {
-            "title": "Post Limit",
-            "type": "integer",
-            "description": "Maximum number of posts to collect per subreddit",
-            "editor": "number",
-            "default": 100,
-            "minimum": 1,
-            "maximum": 1000
-        },
         "clientId": {
             "title": "Reddit Client ID",
             "type": "string",
-            "description": "Your Reddit API Client ID",
-            "editor": "textfield",
-            "default": "",
-            "required": true
+            "description": "Your Reddit API client ID",
+            "editor": "textfield"
         },
         "clientSecret": {
             "title": "Reddit Client Secret",
             "type": "string",
-            "description": "Your Reddit API Client Secret",
+            "description": "Your Reddit API client secret",
+            "editor": "textfield"
+        },
+        "username": {
+            "title": "Reddit Username",
+            "type": "string",
+            "description": "Your Reddit username",
+            "editor": "textfield"
+        },
+        "password": {
+            "title": "Reddit Password",
+            "type": "string",
+            "description": "Your Reddit password",
             "editor": "textfield",
-            "default": "",
-            "required": true
+            "isSecret": true
         },
         "userAgent": {
             "title": "User Agent",
             "type": "string",
-            "description": "Your application user agent",
-            "editor": "textfield",
-            "default": "RedditSentimentAnalyzer/1.0"
+            "description": "Custom user agent string for Reddit API",
+            "default": "SentimentAnalyzer/1.0"
+        },
+        "subreddits": {
+            "title": "Subreddits",
+            "type": "array",
+            "description": "List of subreddits to analyze",
+            "editor": "stringList",
+            "default": ["wallstreetbets", "stocks", "investing"]
+        },
+        "timeframe": {
+            "title": "Time Frame",
+            "type": "string",
+            "description": "Time frame for data collection",
+            "enum": ["hour", "day", "week", "month", "year", "all"],
+            "default": "week"
+        },
+        "postLimit": {
+            "title": "Post Limit",
+            "type": "integer",
+            "description": "Maximum number of posts to analyze per subreddit",
+            "default": 100,
+            "minimum": 1,
+            "maximum": 1000
         }
     },
-    "required": ["subreddits", "clientId", "clientSecret"]
+    "required": ["clientId", "clientSecret", "username", "password"]
 } 

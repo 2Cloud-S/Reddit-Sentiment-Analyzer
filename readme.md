@@ -38,13 +38,42 @@ json
 {
 "clientId": "your_client_id",
 "clientSecret": "your_client_secret",
-"userAgent": "YourApp/1.0",
+"username": "your_reddit_username",
+"password": "your_reddit_password",
+"userAgent": "SentimentAnalyzer/1.0",
 "subreddits": ["wallstreetbets", "stocks"],
 "timeframe": "week",
 "postLimit": 100
 }
-
 Your credentials are securely stored and handled by Apify.
+
+## 🔑 OAuth Authentication Setup
+
+### Getting Reddit API OAuth Credentials
+
+1. Go to [Reddit's App Preferences](https://www.reddit.com/prefs/apps)
+2. Click "Create App" or "Create Another App"
+3. Fill in the details:
+   - Name: Your app name
+   - Type: Select "script"
+   - Description: Brief description
+   - About URL: Your GitHub repo or website
+   - Redirect URI: http://localhost:8080
+4. Click "Create app"
+5. Note down your:
+   - Client ID (under your app name)
+   - Client Secret (labeled as "secret")
+
+### Required OAuth Credentials
+
+The actor requires the following OAuth credentials:
+- Client ID
+- Client Secret
+- Reddit Username
+- Reddit Password
+- User Agent (optional, default provided)
+
+### Input Example with OAuth
 
 ## 🛠️ Technical Details
 

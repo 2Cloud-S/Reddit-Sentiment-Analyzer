@@ -1,21 +1,13 @@
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 from bs4 import BeautifulSoup
+from apify_client import ApifyClient
 import os
 import pandas as pd
 import json
-import random
-import urllib.parse
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
-from apify_client import ApifyClient
-from apify import Actor
-import asyncio
-import aiohttp
-from urllib.parse import parse_qs, urlparse
-import praw
+from src.oauth_handler import RedditOAuthHandler
 
 class RedditDataCollector:
     def __init__(self, config):
@@ -31,163 +23,136 @@ class RedditDataCollector:
         # Store config
         self.config = config
         self.retry_delay = 5
-        self.max_retries = 3
-        
-        # Initialize Reddit API client
-        self.reddit = praw.Reddit(
-            client_id=config['clientId'],
-            client_secret=config['clientSecret'],
-            user_agent=config.get('userAgent', 'RedditSentimentAnalyzer/1.0')
-        )
-        
-        # Default headers that mimic a real browser
-        self.default_headers = {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Accept': 'application/json,text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'DNT': '1',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'none',
-            'Sec-Fetch-User': '?1',
-            'Cache-Control': 'max-age=0'
+        self.headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
         
-        # Merge custom headers if provided
-        if 'customHeaders' in config and config['customHeaders']:
-            self.default_headers.update(config['customHeaders'])
-            
-        # Setup cookies if provided
-        self.cookies = {}
-        if 'sessionCookies' in config and config['sessionCookies']:
-            self.cookies = self._parse_cookie_string(config['sessionCookies'])
+        # Initialize Apify client
+        self._initialize_apify_client()
         
-        # Initialize session variable
-        self.session = None
+        self.reddit = None
         
-    def _parse_cookie_string(self, cookie_string):
-        """Parse cookie string into a dictionary"""
-        cookies = {}
-        if not cookie_string:
-            return cookies
-            
+    def _initialize_apify_client(self):
+        """Initialize Apify client with residential proxies"""
+        self.logger.info("\n=== Apify Client Initialization ===")
         try:
-            cookie_pairs = cookie_string.split(';')
-            for pair in cookie_pairs:
-                if '=' in pair:
-                    key, value = pair.strip().split('=', 1)
-                    cookies[key] = value
-        except Exception as e:
-            self.logger.error(f"Error parsing cookies: {str(e)}")
+            self.apify_client = ApifyClient(os.environ['APIFY_TOKEN'])
+            self.proxy_configuration = {
+                "useApifyProxy": True,
+                "apifyProxyGroups": ["RESIDENTIAL"],
+                "countryCode": "US"
+            }
+            self.logger.info("✅ Apify client initialized with residential proxies")
             
-        return cookies
+            # Test proxy connection
+            proxy_url = self.apify_client.proxy.get_proxy_url(**self.proxy_configuration)
+            self.proxies = {
+                'http': proxy_url,
+                'https': proxy_url
+            }
+            self.logger.info("✅ Proxy configuration tested successfully")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Apify client initialization failed: {e}")
+            raise
 
-    async def _initialize_session(self):
-        """Initialize session with cookies and headers"""
-        self.logger.info("\n=== Session Initialization ===")
+    def _scrape_subreddit_posts(self, subreddit_name, timeframe, limit):
+        """Scrape posts using Apify residential proxies"""
+        self.logger.info(f"🔄 Scraping r/{subreddit_name} with timeframe: {timeframe}")
         
-        # Initialize session with cookie jar
-        cookie_jar = aiohttp.CookieJar(unsafe=True)
-        self.session = aiohttp.ClientSession(
-            cookie_jar=cookie_jar,
-            headers=self.default_headers
-        )
-        
-        # Add cookies to session if available
-        if self.cookies:
-            for key, value in self.cookies.items():
-                self.session.cookie_jar.update_cookies({key: value})
+        posts = []
+        try:
+            # Construct URL based on timeframe
+            url = f"https://old.reddit.com/r/{subreddit_name}/top/?t={timeframe}"
+            
+            response = requests.get(url, proxies=self.proxies, headers=self.headers, timeout=30)
+            self.logger.debug(f"Response status: {response.status_code}")
+            
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'lxml')
                 
-        self.logger.info("✅ Session initialized with cookies and headers")
-        
-        # Test the session
-        await self._test_session()
-
-    async def _test_session(self):
-        """Test the session configuration"""
-        try:
-            async with self.session.get('https://old.reddit.com/api/v1/me.json') as response:
-                self.logger.info(f"Session test status: {response.status}")
-                if response.status == 200:
-                    self.logger.info("✅ Session authentication successful")
-                else:
-                    self.logger.warning("⚠️ Session authentication may not be optimal")
-        except Exception as e:
-            self.logger.error(f"Session test failed: {str(e)}")
-
-    async def _make_request(self, url, retries=3, delay=2):
-        """Make a request with automatic retry and error handling"""
-        for attempt in range(retries):
-            try:
-                async with self.session.get(url) as response:
-                    if response.status == 200:
-                        return await response.json()
-                    elif response.status == 403:
-                        self.logger.warning(f"Access forbidden (403) - Attempt {attempt + 1}/{retries}")
-                        if attempt < retries - 1:
-                            await asyncio.sleep(delay * (attempt + 1))  # Exponential backoff
-                    else:
-                        self.logger.warning(f"Request failed with status {response.status} - Attempt {attempt + 1}/{retries}")
-                        if attempt < retries - 1:
-                            await asyncio.sleep(delay)
-            except Exception as e:
-                self.logger.error(f"Request error on attempt {attempt + 1}: {str(e)}")
-                if attempt < retries - 1:
-                    await asyncio.sleep(delay)
-        return None
-
-    def collect_data(self):
-        """Collect data from Reddit using the API"""
-        subreddits = self.config.get('subreddits', ['stocks'])
-        timeframe = self.config.get('timeframe', 'day')
-        post_limit = self.config.get('postLimit', 100)
-        
-        all_posts = []
-        for subreddit in subreddits:
-            self.logger.info(f"Fetching data from subreddit: {subreddit}")
-            subreddit_instance = self.reddit.subreddit(subreddit)
-            
-            # Fetch top posts based on timeframe
-            if timeframe == 'day':
-                posts = subreddit_instance.top('day', limit=post_limit)
-            elif timeframe == 'week':
-                posts = subreddit_instance.top('week', limit=post_limit)
-            elif timeframe == 'month':
-                posts = subreddit_instance.top('month', limit=post_limit)
-            elif timeframe == 'year':
-                posts = subreddit_instance.top('year', limit=post_limit)
+                # Find all post elements
+                post_elements = soup.find_all('div', class_='thing')
+                self.logger.info(f"Found {len(post_elements)} posts")
+                
+                for element in post_elements[:limit]:
+                    try:
+                        # Extract post data
+                        post = {
+                            'id': element.get('id', '').split('_')[-1],
+                            'title': element.find('a', class_='title').text.strip() if element.find('a', class_='title') else '',
+                            'selftext': element.find('div', class_='usertext-body').text.strip() if element.find('div', class_='usertext-body') else '',
+                            'score': int(element.find('div', class_='score').get('title', 0)) if element.find('div', class_='score') else 0,
+                            'created_utc': datetime.fromtimestamp(int(element.get('data-timestamp', 0)) / 1000) if element.get('data-timestamp') else datetime.now(),
+                            'num_comments': int(element.find('a', class_='comments').text.split()[0].replace(',', '')) if element.find('a', class_='comments') else 0,
+                            'subreddit': subreddit_name,
+                            'url': f"https://reddit.com{element.find('a', class_='title')['href']}" if element.find('a', class_='title') else ''
+                        }
+                        
+                        # Add post to list
+                        posts.append(post)
+                        self.logger.debug(f"Processed post: {post['id']}")
+                        
+                        # Respect rate limits
+                        time.sleep(0.5)
+                        
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ Error processing post: {e}")
+                        continue
+                        
             else:
-                posts = subreddit_instance.top('all', limit=post_limit)
-            
-            for post in posts:
-                all_posts.append({
-                    'title': post.title,
-                    'selftext': post.selftext,
-                    'score': post.score,
-                    'created_utc': datetime.fromtimestamp(post.created_utc),
-                    'comments': post.num_comments,
-                    'subreddit': post.subreddit.display_name,
-                    'url': post.url,
-                    'author': post.author.name if post.author else '[deleted]',
-                    'id': post.id,
-                    'permalink': post.permalink
-                })
+                self.logger.error(f"❌ Failed to fetch subreddit: {response.status_code}")
                 
-            self.logger.info(f"Successfully collected {len(all_posts)} posts from r/{subreddit}")
+        except Exception as e:
+            self.logger.error(f"❌ Web scraping failed: {e}")
+            
+        return posts
+
+    def authenticate(self):
+        """Set up OAuth authentication"""
+        auth_handler = RedditOAuthHandler(
+            client_id=self.config['clientId'],
+            client_secret=self.config['clientSecret'],
+            username=self.config['username'],
+            password=self.config['password'],
+            user_agent=self.config.get('userAgent', 'SentimentAnalyzer/1.0')
+        )
+        self.reddit = auth_handler.authenticate()
         
-        return pd.DataFrame(all_posts) if all_posts else pd.DataFrame()
-
-    async def cleanup(self):
-        """Cleanup resources"""
-        if self.session:
-            await self.session.close()
-            self.logger.info("Session closed")
-
-    async def main(self):
-        await self._initialize_session()
-        # Proceed with data collection after session initialization
-        df = await self.collect_data()
-        await self.session.close()  # Close the session when done
+    def collect_data(self):
+        """Collect data from Reddit using authenticated client"""
+        if not self.reddit:
+            self.authenticate()
+            
+        data = []
+        for subreddit_name in self.config['subreddits']:
+            try:
+                subreddit = self.reddit.subreddit(subreddit_name)
+                
+                # Get posts based on timeframe
+                if self.config['timeframe'] == 'all':
+                    posts = subreddit.top(limit=self.config['postLimit'])
+                else:
+                    posts = subreddit.top(time_filter=self.config['timeframe'], 
+                                        limit=self.config['postLimit'])
+                
+                for post in posts:
+                    post_data = {
+                        'id': post.id,
+                        'subreddit': subreddit_name,
+                        'title': post.title,
+                        'selftext': post.selftext,
+                        'score': post.score,
+                        'comments': post.num_comments,
+                        'created_utc': datetime.fromtimestamp(post.created_utc),
+                        'url': post.url,
+                        'author': str(post.author),
+                        'upvote_ratio': post.upvote_ratio
+                    }
+                    data.append(post_data)
+                    
+            except Exception as e:
+                print(f"Error collecting data from r/{subreddit_name}: {str(e)}")
+                continue
+                
+        return pd.DataFrame(data)

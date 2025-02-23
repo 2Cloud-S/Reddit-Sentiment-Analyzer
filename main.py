@@ -8,7 +8,6 @@ from src.visualizer import Visualizer
 from src.topic_processor import TopicProcessor
 from datetime import datetime
 import re
-import asyncio
 
 def verify_nltk_setup():
     """Verify NLTK setup and VADER lexicon availability"""
@@ -29,7 +28,8 @@ def verify_nltk_setup():
         print(f"❌ NLTK setup verification failed: {str(e)}")
         return False
 
-async def main():
+def main():
+    # Initialize the Apify client
     client = ApifyClient(os.environ['APIFY_TOKEN'])
     
     try:
@@ -42,18 +42,21 @@ async def main():
             
         input_data = input_record['value']
         
-        # Debugging: Log the input data
-        print("Input Data:", json.dumps(input_data, indent=4))
+        # Validate required OAuth credentials
+        required_fields = ['clientId', 'clientSecret', 'username', 'password']
+        missing_fields = [field for field in required_fields if not input_data.get(field)]
+        if missing_fields:
+            raise ValueError(f"Missing required OAuth credentials: {', '.join(missing_fields)}")
         
-        # Initialize collector with input configuration
+        # Initialize components with OAuth config
         collector = RedditDataCollector(input_data)
+        analyzer = SentimentAnalyzer()
+        processor = MathProcessor()
+        visualizer = Visualizer()
         
         # Collect and process data
         print("Collecting Reddit data...")
-        df = await collector.collect_data()
-        
-        # Clean up resources
-        await collector.cleanup()
+        df = collector.collect_data()
         
         if df.empty:
             print("Warning: No data collected")
@@ -69,16 +72,13 @@ async def main():
             }
         else:
             print("Analyzing sentiment...")
-            analyzer = SentimentAnalyzer()
             df = analyzer.analyze_sentiment(df)
             
             print("Calculating metrics...")
-            processor = MathProcessor()
             metrics = processor.calculate_metrics(df)
             
             # Generate visualizations
             print("Generating visualizations...")
-            visualizer = Visualizer()
             visualization_paths = []
             visualization_paths.append(visualizer.plot_sentiment_distribution(df))
             visualization_paths.append(visualizer.plot_engagement_vs_sentiment(df))
@@ -114,4 +114,4 @@ async def main():
         raise
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    main() 
