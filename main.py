@@ -42,6 +42,9 @@ async def main():
             
         input_data = input_record['value']
         
+        # Debugging: Log the input data
+        print("Input Data:", json.dumps(input_data, indent=4))
+        
         # Initialize collector with input configuration
         collector = RedditDataCollector(input_data)
         
